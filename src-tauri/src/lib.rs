@@ -4,6 +4,7 @@ mod commands;
 mod kick;
 mod overlay_commands;
 mod state;
+mod tiktok;
 mod trovo;
 mod ux;
 mod youtube;
@@ -161,6 +162,8 @@ pub fn run() {
             trovo::get_trovo_settings,
             trovo::set_trovo_app,
             trovo::trovo_login_start,
+            tiktok::get_tiktok_settings,
+            tiktok::set_tiktok_api_key,
             kick::get_kick_settings,
             kick::set_kick_app,
             kick::kick_login_start,

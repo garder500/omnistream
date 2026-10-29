@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, Input, Modal, PageHeader, Select } from "../components/ui";
 import TrovoCard from "../components/TrovoCard";
 import KickCard from "../components/KickCard";
+import TiktokCard from "../components/TiktokCard";
 import YoutubeCard from "../components/YoutubeCard";
 import { api } from "../lib/api";
 import { PlatformBadge, PLATFORMS, platformKey } from "../lib/platforms";
@@ -20,7 +21,7 @@ export default function Accounts() {
         <TrovoCard />
         <YoutubeCard />
         <KickCard />
-        <ComingSoon platform="tiktok" lines={["Chat et événements en lecture seule", "Sans OAuth : il suffira de saisir votre pseudo"]} />
+        <TiktokCard />
       </div>
       <Channels />
     </div>
@@ -128,27 +129,10 @@ function TwitchCard() {
   );
 }
 
-function ComingSoon({ platform, lines }: { platform: "youtube" | "kick" | "tiktok"; lines: string[] }) {
-  return (
-    <Card className="flex flex-col gap-4 p-5 opacity-70">
-      <div className="flex items-center gap-3">
-        <PlatformBadge platform={platform} size={44} />
-        <div className="text-base font-semibold">{PLATFORMS[platform].label}</div>
-      </div>
-      <Badge tone="info">Bientôt disponible</Badge>
-      <ul className="space-y-1 leading-relaxed text-soft">
-        {lines.map((l) => (
-          <li key={l}>{l}</li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
 function Channels() {
   const { channels, connected, addChannel, removeChannel } = useStore();
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"twitch" | "trovo" | "youtube" | "kick">("twitch");
+  const [platform, setPlatform] = useState<"twitch" | "trovo" | "youtube" | "kick" | "tiktok">("twitch");
 
   return (
     <Card className="p-5">
@@ -164,11 +148,12 @@ function Channels() {
           setName("");
         }}
       >
-        <Select value={platform} onChange={(e) => setPlatform(e.target.value as "twitch" | "trovo" | "youtube" | "kick")} aria-label="Plateforme">
+        <Select value={platform} onChange={(e) => setPlatform(e.target.value as "twitch" | "trovo" | "youtube" | "kick" | "tiktok")} aria-label="Plateforme">
           <option value="twitch">Twitch</option>
           <option value="trovo">Trovo</option>
           <option value="youtube">YouTube</option>
           <option value="kick">Kick</option>
+          <option value="tiktok">TikTok</option>
         </Select>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={platform === "youtube" ? "Handle ou identifiant de chaîne YouTube (ex. @garder500)" : `Nom de la chaîne ${PLATFORMS[platform].label} (ex. garder_live)`} aria-label={`Chaîne ${PLATFORMS[platform].label}`} className="flex-1" />
         <Button variant="primary" type="submit" disabled={!name.trim()}>

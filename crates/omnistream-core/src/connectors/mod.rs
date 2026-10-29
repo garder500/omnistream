@@ -2,6 +2,7 @@
 //! [`ChatConnector`] puis l'enregistrer dans [`ConnectorRegistry`].
 
 mod kick;
+mod tiktok;
 mod trovo;
 mod twitch;
 mod youtube;
@@ -19,6 +20,7 @@ use crate::domain::{
 use crate::{Error, Result};
 
 pub use kick::{KickAccount, KickApp, KickConnector};
+pub use tiktok::TiktokConnector;
 pub use trovo::{TrovoAccount, TrovoApp, TrovoConnector};
 pub use twitch::{TokenHook, TwitchConnector, TwitchCreds};
 pub use youtube::{YoutubeAccount, YoutubeApp, YoutubeConnector};
