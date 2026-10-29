@@ -11,6 +11,7 @@ pub mod ffmpeg;
 pub mod ingest;
 pub mod moderation;
 pub mod secrets;
+pub mod overlay;
 pub mod streaming;
 
 pub use error::{Error, Result};

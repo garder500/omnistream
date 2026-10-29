@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Omnistream · Overlay chat</title>
+<link id="theme" rel="stylesheet" href="">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #root { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; box-sizing: border-box; gap: 6px; }
+  #pinned { display: none; }
+  #pinned.on { display: block; }
+  #list { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; overflow: hidden; }
+  .msg { word-break: break-word; }
+  .msg .emote { height: 1.4em; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="pinned"></div>
+  <div id="list"></div>
+</div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var token = params.get("token") || "";
+  var cfg = { max_messages: 20, show_platform: true, font_size: 22 };
+  var messages = [];
+  var pinned = null;
+  var list = document.getElementById("list");
+  var pinEl = document.getElementById("pinned");
+  var themeEl = document.getElementById("theme");
+
+  // Charge la nouvelle feuille avant de retirer l'ancienne : pas de flash sans style.
+  function loadTheme() {
+    var next = document.createElement("link");
+    next.rel = "stylesheet";
+    next.href = "/overlay/chat/theme.css?token=" + encodeURIComponent(token) + "&v=" + Date.now();
+    var swap = function () { if (themeEl !== next) { themeEl.remove(); themeEl = next; } };
+    next.onload = swap;
+    next.onerror = swap;
+    document.head.appendChild(next);
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function renderText(m) {
+    var emotes = {};
+    (m.emotes || []).forEach(function (e) { emotes[e.code] = e.url; });
+    return m.text.split(/(\s+)/).map(function (w) {
+      if (Object.prototype.hasOwnProperty.call(emotes, w) && /^(https?:\/\/|data:image\/)/.test(emotes[w])) {
+        return '<img class="emote" alt="' + esc(w) + '" src="' + esc(emotes[w]) + '">';
+      }
+      return esc(w);
+    }).join("");
+  }
+  function build(m, extra) {
+    var el = document.createElement("div");
+    el.className = "msg " + (extra || "") + " platform-" + String(m.platform).replace(/[^a-z0-9_-]/gi, "") +
+      (m.highlighted ? " hl" : "") + (m.author.is_moderator ? " mod" : "") + (m.author.is_subscriber ? " sub" : "");
+    el.dataset.id = m.id;
+    var badge = cfg.show_platform ? '<span class="badge">' + esc(m.platform) + "</span>" : "";
+    el.innerHTML = badge + '<span class="author">' + esc(m.author.display_name) + '</span><span class="text">' + renderText(m) + "</span>";
+    return el;
+  }
+  function trim() {
+    messages = messages.slice(-cfg.max_messages);
+    while (list.children.length > cfg.max_messages) list.removeChild(list.firstChild);
+  }
+  function applySettings(s) {
+    if (!s) return;
+    cfg = s;
+    document.documentElement.style.setProperty("--font-size", s.font_size + "px");
+    loadTheme();
+  }
+  function renderPinned() {
+    pinEl.innerHTML = "";
+    if (pinned) {
+      pinEl.className = "on";
+      pinEl.appendChild(build(pinned, "pin"));
+    } else {
+      pinEl.className = "";
+    }
+  }
+  function renderAll() {
+    list.innerHTML = "";
+    messages.forEach(function (m) { list.appendChild(build(m)); });
+    renderPinned();
+    trim();
+  }
+  function find(id) {
+    var all = list.children;
+    for (var i = 0; i < all.length; i++) if (all[i].dataset.id === id) return all[i];
+    return null;
+  }
+
+  function handle(ev) {
+    var d = ev.data;
+    switch (ev.type) {
+      case "snapshot":
+        messages = d.messages || [];
+        pinned = d.pinned || null;
+        applySettings(d.settings);
+        renderAll();
+        break;
+      case "message":
+        messages.push(d);
+        list.appendChild(build(d));
+        trim();
+        break;
+      case "pin":
+        pinned = d;
+        renderPinned();
+        break;
+      case "highlight":
+        messages.forEach(function (m) { if (m.id === d.id) m.highlighted = d.on; });
+        var el = find(d.id);
+        if (el) el.classList.toggle("hl", d.on);
+        break;
+      case "delete":
+        messages = messages.filter(function (m) { return m.id !== d.id; });
+        var gone = find(d.id);
+        if (gone) gone.remove();
+        if (pinned && pinned.id === d.id) { pinned = null; renderPinned(); }
+        break;
+      case "clear":
+        messages = [];
+        list.innerHTML = "";
+        break;
+      case "settings":
+        var platformChanged = d.show_platform !== cfg.show_platform;
+        applySettings(d);
+        if (platformChanged) renderAll(); else trim();
+        break;
+    }
+  }
+
+  function connect() {
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    var ws = new WebSocket(proto + "//" + location.host + "/ws/chat?token=" + encodeURIComponent(token));
+    ws.onmessage = function (e) { try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    ws.onclose = function () { setTimeout(connect, 1500); };
+  }
+  loadTheme();
+  connect();
+})();
+</script>
+</body>
+</html>

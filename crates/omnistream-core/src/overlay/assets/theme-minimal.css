@@ -1,0 +1,7 @@
+body { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: var(--font-size, 22px); color: #fff; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+.msg { padding: 2px 0; }
+.msg .badge { display: none; }
+.msg .author { font-weight: 700; margin-right: 8px; }
+.msg .author::after { content: " :"; }
+.msg.hl { background: rgb(251 191 36 / 0.25); }
+.msg.pin::before { content: "Épinglé · "; font-weight: 700; }

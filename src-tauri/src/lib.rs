@@ -1,4 +1,5 @@
 mod commands;
+mod overlay_commands;
 mod state;
 
 use omnistream_core::connectors::ChatEvent;
@@ -11,6 +12,13 @@ use state::AppState;
 /// Relaie les événements des connecteurs vers l'interface.
 async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::Receiver<ChatEvent>) {
     while let Some(event) = rx.recv().await {
+        // Même flux pour l'overlay OBS et pour l'interface.
+        let hub = app.state::<AppState>().overlay.hub().clone();
+        match &event {
+            ChatEvent::Message(m) => hub.chat_domain_message(m),
+            ChatEvent::MessageDeleted { message_id, .. } => hub.delete(message_id),
+            _ => {}
+        }
         let _ = match event {
             ChatEvent::Message(m) => {
                 let flag = flag_reason(&m.text);
@@ -58,6 +66,8 @@ pub fn run() {
             tauri::async_runtime::spawn(forward_streaming_events(app.handle().clone()));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                // Un port occupé n'empêche pas l'appli de démarrer : l'erreur s'affiche dans « Overlays ».
+                let _ = handle.state::<AppState>().overlay.start().await;
                 // Ouvre l'ingest RTMP local ; une erreur (port occupé) est visible dans l'interface.
                 let _ = handle.state::<AppState>().streams.start_ingest().await;
                 commands::restore_session(&handle.state::<AppState>()).await;
@@ -86,6 +96,16 @@ pub fn run() {
             commands::set_ffmpeg_path,
             commands::set_stream_title,
             commands::twitch_current_title,
+            overlay_commands::overlay_info,
+            overlay_commands::overlay_set_port,
+            overlay_commands::overlay_regenerate_token,
+            overlay_commands::overlay_get_settings,
+            overlay_commands::overlay_set_settings,
+            overlay_commands::overlay_pin,
+            overlay_commands::overlay_unpin,
+            overlay_commands::overlay_highlight,
+            overlay_commands::overlay_clear,
+            overlay_commands::overlay_test_message,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Omnistream");
