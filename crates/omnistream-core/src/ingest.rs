@@ -84,7 +84,12 @@ impl Shared {
         *self.cache.lock().unwrap() = Cache::default();
         self.bytes.store(0, Ordering::Relaxed);
         self.frames.store(0, Ordering::Relaxed);
-        self.status.send_modify(|s| *s = IngestStatus { state: IngestState::Live, ..Default::default() });
+        self.status.send_modify(|s| {
+            *s = IngestStatus {
+                state: IngestState::Live,
+                ..Default::default()
+            }
+        });
         true
     }
 
@@ -92,7 +97,12 @@ impl Shared {
         *self.publishing.lock().unwrap() = false;
         *self.cache.lock().unwrap() = Cache::default();
         let _ = self.media.send(Media::End);
-        self.status.send_modify(|s| *s = IngestStatus { state: IngestState::Waiting, ..Default::default() });
+        self.status.send_modify(|s| {
+            *s = IngestStatus {
+                state: IngestState::Waiting,
+                ..Default::default()
+            }
+        });
     }
 
     fn on_video(&self, ts: u32, data: Bytes) {
@@ -145,7 +155,11 @@ struct VideoInfo {
 
 impl VideoInfo {
     fn parse(data: &[u8]) -> Self {
-        let none = Self { sequence_header: false, is_frame: false, codec: None };
+        let none = Self {
+            sequence_header: false,
+            is_frame: false,
+            codec: None,
+        };
         let Some(&b) = data.first() else { return none };
         if b & 0x80 != 0 {
             // Enhanced RTMP : le type de paquet est dans les 4 bits bas, puis le FourCC.
@@ -157,7 +171,11 @@ impl VideoInfo {
                 Some(b"vp09") => Some("VP9"),
                 _ => None,
             };
-            return Self { sequence_header: packet_type == 0, is_frame: matches!(packet_type, 1 | 3), codec };
+            return Self {
+                sequence_header: packet_type == 0,
+                is_frame: matches!(packet_type, 1 | 3),
+                codec,
+            };
         }
         let codec = match b & 0x0f {
             7 => Some("H.264"),
@@ -238,7 +256,9 @@ impl Ingest {
         let accept_shared = shared.clone();
         let accept = tokio::spawn(async move {
             loop {
-                let Ok((sock, _)) = listener.accept().await else { continue };
+                let Ok((sock, _)) = listener.accept().await else {
+                    continue;
+                };
                 let shared = accept_shared.clone();
                 tokio::spawn(async move {
                     let _ = sock.set_nodelay(true);
@@ -267,7 +287,12 @@ impl Ingest {
             }
         });
 
-        Ok(Self { port, key, status: status_rx, tasks: vec![accept, stats] })
+        Ok(Self {
+            port,
+            key,
+            status: status_rx,
+            tasks: vec![accept, stats],
+        })
     }
 
     pub fn port(&self) -> u16 {
@@ -316,11 +341,17 @@ async fn handle_connection(mut sock: TcpStream, shared: Arc<Shared>) -> Result<(
         if n == 0 {
             return Ok(());
         }
-        match handshake.process_bytes(&buf[..n]).map_err(|e| format!("{e:?}"))? {
+        match handshake
+            .process_bytes(&buf[..n])
+            .map_err(|e| format!("{e:?}"))?
+        {
             HandshakeProcessResult::InProgress { response_bytes } => {
                 sock.write_all(&response_bytes).await.map_err(io)?;
             }
-            HandshakeProcessResult::Completed { response_bytes, remaining_bytes } => {
+            HandshakeProcessResult::Completed {
+                response_bytes,
+                remaining_bytes,
+            } => {
                 sock.write_all(&response_bytes).await.map_err(io)?;
                 break remaining_bytes;
             }
@@ -333,15 +364,28 @@ async fn handle_connection(mut sock: TcpStream, shared: Arc<Shared>) -> Result<(
     let mut media_rx: Option<broadcast::Receiver<Media>> = None;
     let mut queue: VecDeque<ServerSessionResult> = initial.into();
     if !leftover.is_empty() {
-        queue.extend(session.handle_input(&leftover).map_err(|e| format!("{e:?}"))?);
+        queue.extend(
+            session
+                .handle_input(&leftover)
+                .map_err(|e| format!("{e:?}"))?,
+        );
     }
 
     loop {
         while let Some(result) = queue.pop_front() {
             match result {
-                ServerSessionResult::OutboundResponse(p) => sock.write_all(&p.bytes).await.map_err(io)?,
+                ServerSessionResult::OutboundResponse(p) => {
+                    sock.write_all(&p.bytes).await.map_err(io)?
+                }
                 ServerSessionResult::RaisedEvent(event) => {
-                    on_event(event, &shared, &mut session, &mut queue, &mut role, &mut media_rx)?;
+                    on_event(
+                        event,
+                        &shared,
+                        &mut session,
+                        &mut queue,
+                        &mut role,
+                        &mut media_rx,
+                    )?;
                 }
                 _ => {}
             }
@@ -385,29 +429,57 @@ fn on_event(
 ) -> Result<(), String> {
     let e = |e: rml_rtmp::sessions::ServerSessionError| format!("{e:?}");
     match event {
-        ServerSessionEvent::ConnectionRequested { request_id, app_name } => {
+        ServerSessionEvent::ConnectionRequested {
+            request_id,
+            app_name,
+        } => {
             if app_name == INGEST_APP {
                 queue.extend(session.accept_request(request_id).map_err(e)?);
             } else {
                 queue.extend(
                     session
-                        .reject_request(request_id, "NetConnection.Connect.Rejected", "Application inconnue")
+                        .reject_request(
+                            request_id,
+                            "NetConnection.Connect.Rejected",
+                            "Application inconnue",
+                        )
                         .map_err(e)?,
                 );
             }
         }
-        ServerSessionEvent::PublishStreamRequested { request_id, stream_key, .. } => {
+        ServerSessionEvent::PublishStreamRequested {
+            request_id,
+            stream_key,
+            ..
+        } => {
             if stream_key == shared.key && shared.begin_publish() {
                 *role = Role::Publisher(PublishGuard(shared.clone()));
                 queue.extend(session.accept_request(request_id).map_err(e)?);
             } else {
-                let why = if stream_key == shared.key { "Un encodeur publie déjà" } else { "Clé de stream invalide" };
-                queue.extend(session.reject_request(request_id, "NetStream.Publish.BadName", why).map_err(e)?);
+                let why = if stream_key == shared.key {
+                    "Un encodeur publie déjà"
+                } else {
+                    "Clé de stream invalide"
+                };
+                queue.extend(
+                    session
+                        .reject_request(request_id, "NetStream.Publish.BadName", why)
+                        .map_err(e)?,
+                );
             }
         }
-        ServerSessionEvent::PlayStreamRequested { request_id, stream_key, stream_id, .. } => {
+        ServerSessionEvent::PlayStreamRequested {
+            request_id,
+            stream_key,
+            stream_id,
+            ..
+        } => {
             if stream_key != shared.key {
-                queue.extend(session.reject_request(request_id, "NetStream.Play.StreamNotFound", "Clé invalide").map_err(e)?);
+                queue.extend(
+                    session
+                        .reject_request(request_id, "NetStream.Play.StreamNotFound", "Clé invalide")
+                        .map_err(e)?,
+                );
                 return Ok(());
             }
             // On s'abonne avant de lire le cache pour ne perdre aucun paquet.
@@ -421,20 +493,38 @@ fn on_event(
                 packets.push(session.send_metadata(stream_id, m).map_err(e)?);
             }
             if let Some(h) = &cache.video_header {
-                packets.push(session.send_video_data(stream_id, h.clone(), zero, false).map_err(e)?);
+                packets.push(
+                    session
+                        .send_video_data(stream_id, h.clone(), zero, false)
+                        .map_err(e)?,
+                );
             }
             if let Some(h) = &cache.audio_header {
-                packets.push(session.send_audio_data(stream_id, h.clone(), zero, false).map_err(e)?);
+                packets.push(
+                    session
+                        .send_audio_data(stream_id, h.clone(), zero, false)
+                        .map_err(e)?,
+                );
             }
-            queue.extend(packets.into_iter().map(ServerSessionResult::OutboundResponse));
+            queue.extend(
+                packets
+                    .into_iter()
+                    .map(ServerSessionResult::OutboundResponse),
+            );
         }
-        ServerSessionEvent::StreamMetadataChanged { metadata, .. } if matches!(role, Role::Publisher(_)) => {
+        ServerSessionEvent::StreamMetadataChanged { metadata, .. }
+            if matches!(role, Role::Publisher(_)) =>
+        {
             shared.on_metadata(metadata);
         }
-        ServerSessionEvent::VideoDataReceived { data, timestamp, .. } if matches!(role, Role::Publisher(_)) => {
+        ServerSessionEvent::VideoDataReceived {
+            data, timestamp, ..
+        } if matches!(role, Role::Publisher(_)) => {
             shared.on_video(timestamp.value, data);
         }
-        ServerSessionEvent::AudioDataReceived { data, timestamp, .. } if matches!(role, Role::Publisher(_)) => {
+        ServerSessionEvent::AudioDataReceived {
+            data, timestamp, ..
+        } if matches!(role, Role::Publisher(_)) => {
             shared.on_audio(timestamp.value, data);
         }
         ServerSessionEvent::PublishStreamFinished { .. } => {

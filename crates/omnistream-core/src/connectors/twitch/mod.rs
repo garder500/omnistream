@@ -17,7 +17,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::{ChatConnector, ChatEvent};
 use crate::auth::{self, now_secs, TokenSet};
-use crate::domain::{Category, Channel, ModerationAction, ModerationKind, Platform, StreamInfo, StreamInfoUpdate};
+use crate::domain::{
+    Category, Channel, ModerationAction, ModerationKind, Platform, StreamInfo, StreamInfoUpdate,
+};
 use crate::{Error, Result};
 
 const IRC_URL: &str = "wss://irc-ws.chat.twitch.tv:443";
@@ -83,8 +85,19 @@ impl TwitchConnector {
     /// Titre actuel de la chaîne du compte connecté.
     pub async fn channel_title(&self) -> Result<String> {
         let creds = self.inner.auth(false).await?;
-        let v = self.inner.helix(Method::GET, "channels", &[("broadcaster_id", &creds.user_id)], None).await?;
-        Ok(v["data"][0]["title"].as_str().unwrap_or_default().to_string())
+        let v = self
+            .inner
+            .helix(
+                Method::GET,
+                "channels",
+                &[("broadcaster_id", &creds.user_id)],
+                None,
+            )
+            .await?;
+        Ok(v["data"][0]["title"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Met à jour le titre de la chaîne du compte connecté (scope `channel:manage:broadcast`).
@@ -134,7 +147,13 @@ impl Inner {
         Ok(creds.clone())
     }
 
-    async fn helix(&self, method: Method, path: &str, query: &[(&str, &str)], body: Option<Value>) -> Result<Value> {
+    async fn helix(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, &str)],
+        body: Option<Value>,
+    ) -> Result<Value> {
         let mut attempt = 0;
         loop {
             let creds = self.auth(attempt > 0).await?;
@@ -168,7 +187,9 @@ impl Inner {
         if let Some(id) = self.user_ids.lock().unwrap().get(&login) {
             return Ok(id.clone());
         }
-        let v = self.helix(Method::GET, "users", &[("login", &login)], None).await?;
+        let v = self
+            .helix(Method::GET, "users", &[("login", &login)], None)
+            .await?;
         let id = v["data"][0]["id"]
             .as_str()
             .ok_or_else(|| Error::Other(format!("chaîne Twitch introuvable: {login}")))?
@@ -220,23 +241,34 @@ impl ChatConnector for TwitchConnector {
         let inner = &self.inner;
         let me = inner.auth(false).await?.user_id;
         let broadcaster = inner.user_id(&action.channel.external_id).await?;
-        let scope = [("broadcaster_id", broadcaster.as_str()), ("moderator_id", me.as_str())];
+        let scope = [
+            ("broadcaster_id", broadcaster.as_str()),
+            ("moderator_id", me.as_str()),
+        ];
         match &action.kind {
             ModerationKind::DeleteMessage { message_id } => {
                 let q = [scope[0], scope[1], ("message_id", message_id.as_str())];
-                inner.helix(Method::DELETE, "moderation/chat", &q, None).await?;
+                inner
+                    .helix(Method::DELETE, "moderation/chat", &q, None)
+                    .await?;
             }
             ModerationKind::Timeout { user_id, seconds } => {
                 let body = json!({"data": {"user_id": user_id, "duration": seconds, "reason": DEFAULT_REASON}});
-                inner.helix(Method::POST, "moderation/bans", &scope, Some(body)).await?;
+                inner
+                    .helix(Method::POST, "moderation/bans", &scope, Some(body))
+                    .await?;
             }
             ModerationKind::Ban { user_id, reason } => {
                 let body = json!({"data": {"user_id": user_id, "reason": reason.as_deref().unwrap_or(DEFAULT_REASON)}});
-                inner.helix(Method::POST, "moderation/bans", &scope, Some(body)).await?;
+                inner
+                    .helix(Method::POST, "moderation/bans", &scope, Some(body))
+                    .await?;
             }
             ModerationKind::Unban { user_id } => {
                 let q = [scope[0], scope[1], ("user_id", user_id.as_str())];
-                inner.helix(Method::DELETE, "moderation/bans", &q, None).await?;
+                inner
+                    .helix(Method::DELETE, "moderation/bans", &q, None)
+                    .await?;
             }
         }
         Ok(())
@@ -248,9 +280,16 @@ impl ChatConnector for TwitchConnector {
         }
         let v = self
             .inner
-            .helix(Method::GET, "streams", &[("user_login", &channel.external_id)], None)
+            .helix(
+                Method::GET,
+                "streams",
+                &[("user_login", &channel.external_id)],
+                None,
+            )
             .await?;
-        let Some(s) = v["data"].get(0) else { return Ok(None) };
+        let Some(s) = v["data"].get(0) else {
+            return Ok(None);
+        };
         Ok(Some(StreamInfo {
             channel_id: channel.id.clone(),
             title: s["title"].as_str().unwrap_or_default().to_string(),
@@ -272,18 +311,28 @@ impl ChatConnector for TwitchConnector {
         if let Some(title) = &update.title {
             let title = title.trim();
             if title.is_empty() || title.chars().count() > 140 {
-                return Err(Error::Other("le titre Twitch doit faire entre 1 et 140 caractères".into()));
+                return Err(Error::Other(
+                    "le titre Twitch doit faire entre 1 et 140 caractères".into(),
+                ));
             }
             body.insert("title".into(), json!(title));
         }
-        if let Some(name) = update.category.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        if let Some(name) = update
+            .category
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+        {
             let found = self.search_categories(name).await?;
             let cat = pick_category(&found, name).ok_or_else(|| {
                 let hint: Vec<&str> = found.iter().take(3).map(|c| c.name.as_str()).collect();
                 if hint.is_empty() {
                     Error::Other(format!("catégorie Twitch introuvable : {name}"))
                 } else {
-                    Error::Other(format!("catégorie Twitch introuvable : {name} (essayez : {})", hint.join(", ")))
+                    Error::Other(format!(
+                        "catégorie Twitch introuvable : {name} (essayez : {})",
+                        hint.join(", ")
+                    ))
                 }
             })?;
             body.insert("game_id".into(), json!(cat.id));
@@ -310,7 +359,15 @@ impl ChatConnector for TwitchConnector {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
-        let v = self.inner.helix(Method::GET, "search/categories", &[("query", query.trim()), ("first", "8")], None).await?;
+        let v = self
+            .inner
+            .helix(
+                Method::GET,
+                "search/categories",
+                &[("query", query.trim()), ("first", "8")],
+                None,
+            )
+            .await?;
         Ok(parse_categories(&v))
     }
 }
@@ -338,7 +395,9 @@ fn clean_tags(tags: &[String]) -> Result<Vec<String>> {
 
 /// Choisit la catégorie dont le nom correspond exactement (jamais d'approximation : on ne change pas de jeu par erreur).
 fn pick_category<'a>(found: &'a [Category], wanted: &str) -> Option<&'a Category> {
-    found.iter().find(|c| c.name.trim().eq_ignore_ascii_case(wanted.trim()))
+    found
+        .iter()
+        .find(|c| c.name.trim().eq_ignore_ascii_case(wanted.trim()))
 }
 
 fn parse_categories(v: &Value) -> Vec<Category> {
@@ -346,7 +405,12 @@ fn parse_categories(v: &Value) -> Vec<Category> {
         .as_array()
         .map(|a| {
             a.iter()
-                .filter_map(|c| Some(Category { id: c["id"].as_str()?.to_string(), name: c["name"].as_str()?.to_string() }))
+                .filter_map(|c| {
+                    Some(Category {
+                        id: c["id"].as_str()?.to_string(),
+                        name: c["name"].as_str()?.to_string(),
+                    })
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -363,7 +427,13 @@ async fn run_channel(
     loop {
         let started = Instant::now();
         let _ = session(&inner, &channel, &tx, &mut outbox).await;
-        if tx.send(ChatEvent::Disconnected { channel_id: channel.id.clone() }).await.is_err() {
+        if tx
+            .send(ChatEvent::Disconnected {
+                channel_id: channel.id.clone(),
+            })
+            .await
+            .is_err()
+        {
             return;
         }
         if started.elapsed() > Duration::from_secs(30) {
@@ -381,13 +451,18 @@ async fn session(
     outbox: &mut mpsc::UnboundedReceiver<String>,
 ) -> Result<()> {
     let net = |e: tokio_tungstenite::tungstenite::Error| Error::Network(e.to_string());
-    let (mut ws, _) = tokio_tungstenite::connect_async(IRC_URL).await.map_err(net)?;
+    let (mut ws, _) = tokio_tungstenite::connect_async(IRC_URL)
+        .await
+        .map_err(net)?;
     let login = channel.external_id.to_lowercase();
 
     // Sans compte connecté, on lit le chat en anonyme (pseudo `justinfan*`).
     let (nick, pass) = match inner.auth(false).await {
         Ok(c) => (c.login, format!("oauth:{}", c.tokens.access_token)),
-        Err(_) => (format!("justinfan{}", now_secs() % 100_000), "SCHMOOPIIE".to_string()),
+        Err(_) => (
+            format!("justinfan{}", now_secs() % 100_000),
+            "SCHMOOPIIE".to_string(),
+        ),
     };
     for line in [
         "CAP REQ :twitch.tv/tags twitch.tv/commands".to_string(),
@@ -445,7 +520,13 @@ mod tests {
 
     #[test]
     fn tags_are_validated() {
-        let ok = clean_tags(&["#Français".into(), " chill ".into(), "chill".into(), "".into()]).unwrap();
+        let ok = clean_tags(&[
+            "#Français".into(),
+            " chill ".into(),
+            "chill".into(),
+            "".into(),
+        ])
+        .unwrap();
         assert_eq!(ok, vec!["Français", "chill"]);
         assert!(clean_tags(&["a b".into()]).is_err());
         assert!(clean_tags(&["x".repeat(26)]).is_err());

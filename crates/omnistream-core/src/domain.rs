@@ -84,6 +84,14 @@ pub struct ChatMessage {
     pub text: String,
     /// Millisecondes depuis l'epoch Unix.
     pub timestamp_ms: i64,
+    /// Émotes repérées dans `text` (natives de la plateforme puis 7TV/BTTV/FFZ).
+    #[serde(default)]
+    pub emotes: Vec<crate::emotes::EmoteSpan>,
+    #[serde(default)]
+    pub badges: Vec<crate::emotes::ChatBadge>,
+    /// Identifiant de salon Twitch (sert à charger les émotes tierces); jamais envoyé à l'interface.
+    #[serde(default, skip_serializing)]
+    pub room_id: Option<String>,
 }
 
 /// Événement de live (abonnement, don de subs, raid...).
@@ -162,10 +170,20 @@ pub struct StreamPreset {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModerationKind {
-    DeleteMessage { message_id: String },
-    Timeout { user_id: String, seconds: u32 },
-    Ban { user_id: String, reason: Option<String> },
-    Unban { user_id: String },
+    DeleteMessage {
+        message_id: String,
+    },
+    Timeout {
+        user_id: String,
+        seconds: u32,
+    },
+    Ban {
+        user_id: String,
+        reason: Option<String>,
+    },
+    Unban {
+        user_id: String,
+    },
 }
 
 impl ModerationKind {
@@ -201,6 +219,10 @@ pub struct StreamDestination {
 
 impl StreamDestination {
     pub fn full_url(&self) -> String {
-        format!("{}/{}", self.rtmp_url.trim_end_matches('/'), self.stream_key)
+        format!(
+            "{}/{}",
+            self.rtmp_url.trim_end_matches('/'),
+            self.stream_key
+        )
     }
 }

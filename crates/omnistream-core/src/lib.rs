@@ -6,6 +6,7 @@ pub mod auth;
 pub mod connectors;
 pub mod db;
 pub mod domain;
+pub mod emotes;
 pub mod error;
 pub mod ffmpeg;
 pub mod ingest;

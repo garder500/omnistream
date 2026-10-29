@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::domain::{
-    Category, Channel, ChatMessage, ModerationAction, Platform, PlatformUpdateResult, StreamEvent, StreamInfo,
-    StreamInfoUpdate,
+    Category, Channel, ChatMessage, ModerationAction, Platform, PlatformUpdateResult, StreamEvent,
+    StreamInfo, StreamInfoUpdate,
 };
 use crate::{Error, Result};
 
@@ -22,9 +22,16 @@ pub use twitch::{TokenHook, TwitchConnector, TwitchCreds};
 pub enum ChatEvent {
     Message(ChatMessage),
     Event(StreamEvent),
-    MessageDeleted { channel_id: String, message_id: String },
-    Connected { channel_id: String },
-    Disconnected { channel_id: String },
+    MessageDeleted {
+        channel_id: String,
+        message_id: String,
+    },
+    Connected {
+        channel_id: String,
+    },
+    Disconnected {
+        channel_id: String,
+    },
 }
 
 #[async_trait]
@@ -47,8 +54,15 @@ pub trait ChatConnector: Send + Sync {
     }
 
     /// Modifie titre / catégorie / tags du direct. Par défaut : non supporté.
-    async fn update_stream_info(&self, _channel: &Channel, _update: &StreamInfoUpdate) -> Result<()> {
-        Err(Error::Unsupported { platform: self.platform(), feature: "la mise à jour du titre et de la catégorie" })
+    async fn update_stream_info(
+        &self,
+        _channel: &Channel,
+        _update: &StreamInfoUpdate,
+    ) -> Result<()> {
+        Err(Error::Unsupported {
+            platform: self.platform(),
+            feature: "la mise à jour du titre et de la catégorie",
+        })
     }
 
     /// Recherche de catégories par texte libre. Par défaut : aucune suggestion.
@@ -79,7 +93,11 @@ impl ConnectorRegistry {
     }
 
     /// Applique `update` à toutes les chaînes ; un échec n'empêche pas les autres plateformes.
-    pub async fn update_stream_info(&self, channels: &[Channel], update: &StreamInfoUpdate) -> Vec<PlatformUpdateResult> {
+    pub async fn update_stream_info(
+        &self,
+        channels: &[Channel],
+        update: &StreamInfoUpdate,
+    ) -> Vec<PlatformUpdateResult> {
         let tasks = channels.iter().map(|channel| async move {
             let outcome = match self.get(&channel.platform) {
                 Ok(c) => c.update_stream_info(channel, update).await,
@@ -149,7 +167,12 @@ mod tests {
     }
 
     fn chan(p: Platform, id: &str) -> Channel {
-        Channel { id: id.into(), platform: p, external_id: id.into(), display_name: id.into() }
+        Channel {
+            id: id.into(),
+            platform: p,
+            external_id: id.into(),
+            display_name: id.into(),
+        }
     }
 
     #[tokio::test]
@@ -157,8 +180,15 @@ mod tests {
         let mut reg = ConnectorRegistry::new();
         reg.register(Arc::new(Ok1));
         reg.register(Arc::new(Default1));
-        let channels = [chan(Platform::Twitch, "t"), chan(Platform::Kick, "k"), chan(Platform::Youtube, "y")];
-        let update = StreamInfoUpdate { title: Some("Hello".into()), ..Default::default() };
+        let channels = [
+            chan(Platform::Twitch, "t"),
+            chan(Platform::Kick, "k"),
+            chan(Platform::Youtube, "y"),
+        ];
+        let update = StreamInfoUpdate {
+            title: Some("Hello".into()),
+            ..Default::default()
+        };
         let res = reg.update_stream_info(&channels, &update).await;
         assert_eq!(res.len(), 3);
         assert!(res[0].ok && res[0].error.is_none());
