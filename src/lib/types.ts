@@ -240,6 +240,8 @@ export interface TrovoSettings {
   redirect_uri: string;
 }
 
+export type YoutubeSettings = TrovoSettings;
+
 // --- Automations ---
 export type Role = "everyone" | "subscriber" | "moderator" | "broadcaster";
 

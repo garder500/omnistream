@@ -54,6 +54,7 @@ pub async fn restore_session(state: &AppState) {
         }
     }
     crate::trovo::restore(state).await;
+    crate::youtube::restore(state).await;
     reconnect_channels(state).await;
 }
 
@@ -157,10 +158,10 @@ pub async fn remove_account(
         .into_iter()
         .find(|a| a.id == id);
     state.db.delete_account(&id).map_err(err)?;
-    if removed.is_some_and(|a| a.platform == Platform::Trovo) {
-        state.trovo.set_account(None).await;
-    } else {
-        state.twitch.set_credentials(None).await;
+    match removed.map(|a| a.platform) {
+        Some(Platform::Trovo) => state.trovo.set_account(None).await,
+        Some(Platform::Youtube) => state.youtube.set_account(None).await,
+        _ => state.twitch.set_credentials(None).await,
     }
     reconnect_channels(&state).await;
     let _ = app.emit("account://changed", ());
@@ -179,11 +180,25 @@ pub async fn add_channel(
     name: String,
 ) -> CmdResult<Channel> {
     let platform = Platform::from(platform.as_str());
-    if !matches!(platform, Platform::Twitch | Platform::Trovo) {
+    if !matches!(
+        platform,
+        Platform::Twitch | Platform::Trovo | Platform::Youtube
+    ) {
         return Err(format!("{platform} n'est pas encore pris en charge."));
     }
-    let login = name.trim().trim_start_matches(['#', '@']).to_lowercase();
-    if login.is_empty() || !login.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    let trimmed = name.trim().trim_start_matches(['#', '@']);
+    // Un identifiant de chaîne YouTube (UC...) est sensible à la casse ; handles et logins ne le sont pas.
+    let login = if platform == Platform::Youtube && trimmed.starts_with("UC") {
+        trimmed.to_string()
+    } else {
+        trimmed.to_lowercase()
+    };
+    let allowed = |c: char| {
+        c.is_ascii_alphanumeric()
+            || c == '_'
+            || (platform == Platform::Youtube && matches!(c, '-' | '.'))
+    };
+    if login.is_empty() || !login.chars().all(allowed) {
         return Err("Nom de chaîne invalide.".into());
     }
     let channel = Channel {

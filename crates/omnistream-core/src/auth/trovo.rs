@@ -5,12 +5,10 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-
+use super::loopback::{self, encode};
 use super::{now_secs, TokenSet};
 use crate::{Error, Result};
+use serde::{Deserialize, Serialize};
 
 const AUTH_URL: &str = "https://open.trovo.live/page/login.html";
 pub(crate) const API_URL: &str = "https://open-api.trovo.live/openplatform";
@@ -42,42 +40,6 @@ struct TokenResponse {
     expires_in: Option<i64>,
 }
 
-fn encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
-
-fn decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'%' if i + 2 < bytes.len() => {
-                if let Some(b) = s
-                    .get(i + 1..i + 3)
-                    .and_then(|h| u8::from_str_radix(h, 16).ok())
-                {
-                    out.push(b);
-                    i += 3;
-                    continue;
-                }
-                out.push(b'%');
-            }
-            b'+' => out.push(b' '),
-            b => out.push(b),
-        }
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 /// Adresse à ouvrir dans le navigateur pour autoriser l'application.
 pub fn authorize_url(client_id: &str, state: &str) -> String {
     format!(
@@ -89,92 +51,9 @@ pub fn authorize_url(client_id: &str, state: &str) -> String {
     )
 }
 
-/// Extrait le `code` de la première ligne d'une requête HTTP de redirection,
-/// en vérifiant le paramètre `state` (protection CSRF).
-pub(crate) fn parse_callback(request_line: &str, expected_state: &str) -> Result<String> {
-    let target = request_line.split_whitespace().nth(1).unwrap_or_default();
-    let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    if path != "/callback" {
-        return Err(Error::Other("requête inattendue".into()));
-    }
-    let param = |name: &str| {
-        query
-            .split('&')
-            .filter_map(|kv| kv.split_once('='))
-            .find(|(k, _)| *k == name)
-            .map(|(_, v)| decode(v))
-    };
-    if let Some(e) = param("error") {
-        return Err(Error::Other(format!("autorisation Trovo refusée: {e}")));
-    }
-    if param("state").as_deref() != Some(expected_state) {
-        return Err(Error::Other(
-            "réponse Trovo non reconnue (state invalide)".into(),
-        ));
-    }
-    param("code")
-        .filter(|c| !c.is_empty())
-        .ok_or_else(|| Error::Other("Trovo n'a pas renvoyé de code d'autorisation".into()))
-}
-
 /// Écoute la redirection de Trovo et renvoie le code d'autorisation.
 pub async fn wait_for_code(expected_state: &str, timeout: Duration) -> Result<String> {
-    let listener = TcpListener::bind(("127.0.0.1", CALLBACK_PORT))
-        .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "port {CALLBACK_PORT} indisponible pour la connexion Trovo: {e}"
-            ))
-        })?;
-    let wait = async {
-        loop {
-            let (mut sock, _) = listener.accept().await?;
-            let mut buf = vec![0u8; 4096];
-            // Les navigateurs ouvrent parfois des connexions muettes : on ne s'y attarde pas.
-            let n = match tokio::time::timeout(Duration::from_secs(5), sock.read(&mut buf)).await {
-                Ok(r) => r.unwrap_or(0),
-                Err(_) => 0,
-            };
-            let head = String::from_utf8_lossy(&buf[..n]).into_owned();
-            let line = head.lines().next().unwrap_or_default();
-            if !line.contains("/callback") {
-                // Requête parasite (favicon...) : on attend la vraie redirection.
-                let _ = sock.shutdown().await;
-                continue;
-            }
-            let result = parse_callback(line, expected_state);
-            let (status, body) = match &result {
-                Ok(_) => (
-                    "200 OK",
-                    "Omnistream est connecté à Trovo. Vous pouvez fermer cet onglet.",
-                ),
-                Err(_) => (
-                    "400 Bad Request",
-                    "Connexion Trovo impossible. Retournez dans Omnistream.",
-                ),
-            };
-            let page = format!(
-                "<!doctype html><meta charset=utf-8><title>Omnistream</title><body style=\"font-family:sans-serif;background:#120826;color:#fff;text-align:center;padding-top:20vh\">{body}"
-            );
-            let resp = format!(
-                "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}",
-                page.len()
-            );
-            let _ = sock.write_all(resp.as_bytes()).await;
-            let _ = sock.shutdown().await;
-            // Une requête sans code ni erreur (autre page locale) n'annule pas la connexion.
-            if result.is_ok() || line.contains("error=") {
-                return Ok::<_, std::io::Error>(result);
-            }
-        }
-    };
-    match tokio::time::timeout(timeout, wait).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => Err(Error::Io(e)),
-        Err(_) => Err(Error::Other(
-            "délai dépassé: autorisation Trovo non reçue".into(),
-        )),
-    }
+    loopback::wait_for_code(CALLBACK_PORT, "Trovo", expected_state, timeout).await
 }
 
 fn parse_tokens(status: u16, body: &str) -> Result<TokenSet> {
@@ -297,22 +176,6 @@ mod tests {
         assert!(url.contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A41257%2Fcallback"));
         assert!(url.contains("state=s%201"));
         assert!(url.contains("scope=chat_connect+chat_send_self"));
-    }
-
-    #[test]
-    fn parses_callback() {
-        assert_eq!(
-            parse_callback("GET /callback?code=a%2Fb&state=xyz HTTP/1.1", "xyz").unwrap(),
-            "a/b"
-        );
-        assert!(parse_callback("GET /callback?code=a&state=bad HTTP/1.1", "xyz").is_err());
-        assert!(parse_callback(
-            "GET /callback?error=access_denied&state=xyz HTTP/1.1",
-            "xyz"
-        )
-        .is_err());
-        assert!(parse_callback("GET /favicon.ico HTTP/1.1", "xyz").is_err());
-        assert!(parse_callback("GET /callback?state=xyz HTTP/1.1", "xyz").is_err());
     }
 
     #[test]

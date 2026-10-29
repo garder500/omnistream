@@ -3,6 +3,7 @@
 
 mod trovo;
 mod twitch;
+mod youtube;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use crate::{Error, Result};
 
 pub use trovo::{TrovoAccount, TrovoApp, TrovoConnector};
 pub use twitch::{TokenHook, TwitchConnector, TwitchCreds};
+pub use youtube::{YoutubeAccount, YoutubeApp, YoutubeConnector};
 
 /// Événements remontés par un connecteur vers l'agrégateur de chat.
 #[derive(Debug, Clone, PartialEq)]

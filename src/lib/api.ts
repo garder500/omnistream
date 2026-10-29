@@ -20,6 +20,7 @@ import type {
   DestinationInput,
   FfmpegStatus,
   TrovoSettings,
+  YoutubeSettings,
   Category,
   PlatformUpdateResult,
   StreamDestination,
@@ -39,6 +40,9 @@ export const api = {
   getTrovoSettings: () => invoke<TrovoSettings>("get_trovo_settings"),
   setTrovoApp: (clientId: string, clientSecret: string) => invoke<void>("set_trovo_app", { clientId, clientSecret }),
   trovoLoginStart: () => invoke<string>("trovo_login_start"),
+  getYoutubeSettings: () => invoke<YoutubeSettings>("get_youtube_settings"),
+  setYoutubeApp: (clientId: string, clientSecret: string) => invoke<void>("set_youtube_app", { clientId, clientSecret }),
+  youtubeLoginStart: () => invoke<string>("youtube_login_start"),
   removeAccount: (id: string) => invoke<void>("remove_account", { id }),
 
   listChannels: () => invoke<Channel[]>("list_channels"),
