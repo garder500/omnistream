@@ -1,3 +1,4 @@
+mod bansync_commands;
 mod commands;
 mod state;
 mod trovo;
@@ -124,6 +125,10 @@ pub fn run() {
                 // Ouvre l'ingest RTMP local ; une erreur (port occupé) est visible dans l'interface.
                 let _ = handle.state::<AppState>().streams.start_ingest().await;
                 commands::restore_session(&handle.state::<AppState>()).await;
+                // Reprise des bans synchronisés restés en file avant l'arrêt.
+                if let Err(e) = handle.state::<AppState>().bansync.resume().await {
+                    eprintln!("reprise des bans synchronisés impossible: {e}");
+                }
             });
             spawn_automation_loops(app.handle().clone());
             Ok(())
@@ -146,6 +151,13 @@ pub fn run() {
             commands::save_automod_rule,
             commands::delete_automod_rule,
             commands::test_automod,
+            bansync_commands::bansync_list_identities,
+            bansync_commands::bansync_link_identity,
+            bansync_commands::bansync_unlink_identity,
+            bansync_commands::bansync_preview,
+            bansync_commands::bansync_submit,
+            bansync_commands::bansync_retry,
+            bansync_commands::bansync_journal,
             commands::stream_infos,
             commands::list_sessions,
             commands::session_detail,

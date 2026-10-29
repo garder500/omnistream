@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AutomodRules from "../components/AutomodRules";
+import { BanSyncPanel, type BanSyncPrefill } from "../components/BanSyncPanel";
 import { Avatar, Button, Card, PageHeader } from "../components/ui";
 import { PlatformBadge, platformKey } from "../lib/platforms";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
@@ -10,29 +11,40 @@ export default function Moderation() {
   const [selectedId, setSelectedId] = useState<string>();
   const selected = queue.find((m) => m.id === selectedId) ?? queue[0];
   const channel = channels.find((c) => c.id === selected?.channel_id);
-  const [tab, setTab] = useState<"queue" | "rules">("queue");
+  const [tab, setTab] = useState<"queue" | "rules" | "bansync">("queue");
+  const [prefill, setPrefill] = useState<BanSyncPrefill>();
+
+  const tabs = (
+    <div role="tablist" className="flex gap-1.5">
+      {(["queue", "rules", "bansync"] as const).map((t) => (
+        <button
+          key={t}
+          role="tab"
+          aria-selected={tab === t}
+          onClick={() => {
+            setTab(t);
+            setPrefill(undefined);
+          }}
+          className={`rounded-full px-4 py-2 font-semibold ${tab === t ? "bg-brand-soft text-brand-ring" : "text-muted hover:text-zinc-100"}`}
+        >
+          {t === "queue" ? "File" : t === "rules" ? "Règles d'automod" : "Bans synchronisés"}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (tab === "bansync") {
+    return (
+      <div className="flex h-full flex-col">
+        <PageHeader title="Modération" subtitle="Bannissez un compte sur toutes vos plateformes en une fois" actions={tabs} />
+        <BanSyncPanel key={prefill ? `${prefill.platform}:${prefill.userId}` : "empty"} prefill={prefill} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader
-        title="Modération"
-        subtitle="Les messages qui déclenchent une règle d'automod arrivent ici en temps réel"
-        actions={
-          <div role="tablist" className="flex gap-1.5">
-            {(["queue", "rules"] as const).map((t) => (
-              <button
-                key={t}
-                role="tab"
-                aria-selected={tab === t}
-                onClick={() => setTab(t)}
-                className={`rounded-full px-4 py-2 font-semibold ${tab === t ? "bg-brand-soft text-brand-ring" : "text-muted hover:text-zinc-100"}`}
-              >
-                {t === "queue" ? "File" : "Règles d'automod"}
-              </button>
-            ))}
-          </div>
-        }
-      />
+      <PageHeader title="Modération" subtitle="Les messages qui déclenchent une règle d'automod arrivent ici en temps réel" actions={tabs} />
 
       {tab === "rules" ? (
         <AutomodRules />
@@ -100,6 +112,16 @@ export default function Moderation() {
                 </Button>
                 <Button variant="outline" onClick={() => dismiss(selected.id)}>
                   Ignorer
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="col-span-2"
+                  onClick={() => {
+                    setPrefill({ platform: selected.platform, userId: selected.author.external_id, name: selected.author.display_name });
+                    setTab("bansync");
+                  }}
+                >
+                  Bannir sur toutes les plateformes…
                 </Button>
               </div>
             </>

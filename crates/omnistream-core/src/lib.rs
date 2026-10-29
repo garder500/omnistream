@@ -6,6 +6,7 @@ pub mod auth;
 pub mod automation;
 pub mod automation_service;
 pub mod automod;
+pub mod bansync;
 pub mod connectors;
 pub mod db;
 pub mod domain;

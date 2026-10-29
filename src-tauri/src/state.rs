@@ -4,6 +4,7 @@ use std::sync::Arc;
 use omnistream_core::automation::SystemClock;
 use omnistream_core::automation_service::AutomationService;
 use omnistream_core::automod::AutoMod;
+use omnistream_core::bansync::BanSync;
 use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub moderation: ModerationEngine,
     pub automation: Arc<AutomationService>,
     pub automod: std::sync::Mutex<AutoMod>,
+    pub bansync: BanSync,
     pub streams: StreamService,
     pub chat_tx: mpsc::Sender<ChatEvent>,
 }
@@ -59,12 +61,13 @@ impl AppState {
                 Vec::new()
             })));
         let state = Self {
-            db,
+            db: db.clone(),
             automod,
             automation,
             twitch,
             trovo,
             moderation: ModerationEngine::new(connectors.clone()),
+            bansync: BanSync::new(db.clone(), connectors.clone()),
             connectors,
             streams,
             chat_tx,
