@@ -3,13 +3,15 @@ import { ChatMessage } from "../components/ChatMessage";
 import { StreamInfoForm } from "../components/StreamInfoForm";
 import { Badge, Card, CardHeader, LinkButton, LiveBadge, PageHeader } from "../components/ui";
 import { PlatformBadge, PLATFORM_KEYS, PLATFORMS, platformKey } from "../lib/platforms";
+import { localeOf } from "../lib/i18n";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
 import { estimateUnique, viewersByPlatform } from "../lib/viewers";
 
 type Go = (id: "chat" | "moderation" | "accounts") => void;
 
 export default function Dashboard({ go }: { go: Go }) {
-  const { messages, channels, connected, infos, msgPerMin, accounts, overlap } = useStore();
+  const { messages, channels, connected, infos, msgPerMin, accounts, overlap, t, lang } = useStore();
+  const nf = (n: number) => n.toLocaleString(localeOf(lang));
   const live = infos.length > 0;
   const estimate = estimateUnique(viewersByPlatform(infos, channels), overlap);
   const viewers = estimate.total;
@@ -18,18 +20,18 @@ export default function Dashboard({ go }: { go: Go }) {
   const flagged = flaggedQueue(messages).length;
 
   const stats = [
-    { label: "Spectateurs cumulés", value: live ? viewers.toLocaleString("fr-FR") : "—", hint: !live ? "Aucun live détecté" : multi ? `≈ ${estimate.unique.toLocaleString("fr-FR")} uniques (estimation)` : "Somme brute · mise à jour toutes les 30 s", title: multi ? `Estimation du dédoublonnage : ${Math.round(estimate.overlapRate * 100)} % des chatteurs sont sur plusieurs plateformes. Fourchette ${estimate.low.toLocaleString("fr-FR")} à ${estimate.total.toLocaleString("fr-FR")}.` : undefined },
-    { label: "Messages / minute", value: String(msgPerMin), hint: `${channels.length} chaîne${channels.length > 1 ? "s" : ""} fusionnée${channels.length > 1 ? "s" : ""}` },
-    { label: "Chats connectés", value: `${online} / ${channels.length}`, hint: accounts.length ? "Compte Twitch connecté" : "Lecture seule : aucun compte", good: online === channels.length && channels.length > 0 },
-    { label: "À modérer", value: String(flagged), hint: "Ouvrir la file →", warn: flagged > 0, onClick: () => go("moderation") },
+    { label: t("dash.viewers"), value: live ? nf(viewers) : "—", hint: !live ? t("dash.viewersHintOff") : multi ? t("dash.uniquesEstimate", { n: nf(estimate.unique) }) : t("dash.viewersHintLive"), title: multi ? t("dash.overlapTitle", { pct: Math.round(estimate.overlapRate * 100), low: nf(estimate.low), high: nf(estimate.total) }) : undefined },
+    { label: t("dash.msgPerMin"), value: String(msgPerMin), hint: t("dash.merged", { n: channels.length }) },
+    { label: t("dash.connected"), value: `${online} / ${channels.length}`, hint: t(accounts.length ? "dash.withAccount" : "dash.readOnly"), good: online === channels.length && channels.length > 0 },
+    { label: t("dash.toModerate"), value: String(flagged), hint: t("dash.openQueue"), warn: flagged > 0, onClick: () => go("moderation") },
   ];
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Tableau de bord"
-        subtitle={live ? `Vous êtes en direct sur ${infos.length} chaîne${infos.length > 1 ? "s" : ""}` : "Aucun live en cours sur vos chaînes"}
-        actions={live ? <LiveBadge>EN DIRECT · {formatAge(Math.min(...infos.map((i) => Date.parse(i.started_at))))}</LiveBadge> : undefined}
+        title={t("dash.title")}
+        subtitle={live ? t("dash.live", { n: infos.length }) : t("dash.offline")}
+        actions={live ? <LiveBadge>{t("common.live")} · {formatAge(Math.min(...infos.map((i) => Date.parse(i.started_at))))}</LiveBadge> : undefined}
       />
 
       <div className="mb-5 grid grid-cols-4 gap-4">
@@ -61,18 +63,18 @@ export default function Dashboard({ go }: { go: Go }) {
                   <div className="flex-1">
                     <div className="font-semibold">{PLATFORMS[p].label}</div>
                     <div className="text-[13px] text-muted">
-                      {!supported ? "Bientôt disponible" : mine.length === 0 ? "Aucune chaîne suivie" : mine.map((c) => c.display_name).join(", ")}
+                      {!supported ? t("dash.comingSoon") : mine.length === 0 ? t("dash.noChannel") : mine.map((c) => c.display_name).join(", ")}
                     </div>
                   </div>
                   {supported && mine.length > 0 ? (
                     <div className="text-right">
-                      <div className="font-semibold">{platformViewers.toLocaleString("fr-FR")}</div>
-                      <div className="text-xs text-muted">spectateurs</div>
+                      <div className="font-semibold">{nf(platformViewers)}</div>
+                      <div className="text-xs text-muted">{t("dash.viewersUnit")}</div>
                     </div>
                   ) : (
-                    supported && <LinkButton onClick={() => go("accounts")}>Ajouter →</LinkButton>
+                    supported && <LinkButton onClick={() => go("accounts")}>{t("dash.add")}</LinkButton>
                   )}
-                  {!supported && <Badge tone="info">Bientôt</Badge>}
+                  {!supported && <Badge tone="info">{t("common.soon")}</Badge>}
                 </div>
               );
             })}
@@ -82,9 +84,9 @@ export default function Dashboard({ go }: { go: Go }) {
         </section>
 
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <CardHeader title="Chat unifié" aside={<LinkButton onClick={() => go("chat")}>Agrandir →</LinkButton>} />
+          <CardHeader title={t("dash.unifiedChat")} aside={<LinkButton onClick={() => go("chat")}>{t("dash.expand")}</LinkButton>} />
           <div className="flex min-h-0 flex-1 flex-col justify-end gap-0.5 overflow-hidden p-2">
-            {messages.length === 0 && <p className="m-auto text-muted">Aucun message pour l'instant.</p>}
+            {messages.length === 0 && <p className="m-auto text-muted">{t("dash.noMessages")}</p>}
             {messages.slice(-7).map((m) => (
               <ChatMessage key={m.id} message={m} />
             ))}

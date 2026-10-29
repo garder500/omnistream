@@ -46,6 +46,7 @@ export const api = {
   removeChannel: (channelId: string) => invoke<void>("remove_channel", { channelId }),
   sendMessage: (channelIds: string[], text: string) => invoke<void>("send_message", { channelIds, text }),
   moderate: (channelId: string, kind: ModerationKind) => invoke<void>("moderate", { channelId, kind }),
+  toggleDock: () => invoke<boolean>("toggle_dock"),
   bansyncIdentities: () => invoke<IdentityLink[]>("bansync_list_identities"),
   bansyncLink: (link: IdentityLink) => invoke<void>("bansync_link_identity", { link }),
   bansyncUnlink: (platform: Platform, userId: string) => invoke<void>("bansync_unlink_identity", { platform, userId }),

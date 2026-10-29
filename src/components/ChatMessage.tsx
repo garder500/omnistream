@@ -39,7 +39,7 @@ function renderText(text: string, emotes: EmoteSpan[] | undefined) {
 }
 
 export function ChatMessage({ message, actions }: { message: StoredMessage; actions?: boolean }) {
-  const { moderate, channels } = useStore();
+  const { moderate, channels, t } = useStore();
   const platform = platformKey(message.platform);
   const meta = PLATFORMS[platform];
   const channel = channels.find((c) => c.id === message.channel_id);
@@ -55,12 +55,12 @@ export function ChatMessage({ message, actions }: { message: StoredMessage; acti
         <b className={meta.text}>{author.display_name}</b>{" "}
         {author.is_moderator && (
           <span className="mr-1 align-middle">
-            <Badge>Modo</Badge>
+            <Badge>{t("common.mod")}</Badge>
           </span>
         )}
         {author.is_subscriber && (
           <span className="mr-1 align-middle">
-            <Badge tone="brand">Abo</Badge>
+            <Badge tone="brand">{t("common.sub")}</Badge>
           </span>
         )}
         {message.badges
@@ -73,16 +73,16 @@ export function ChatMessage({ message, actions }: { message: StoredMessage; acti
         <span className={message.deleted ? "text-muted line-through" : "text-zinc-300"}>
           {renderText(message.text, message.emotes)}
         </span>
-        {message.deleted && <span className="ml-2 text-xs text-muted">supprimé</span>}
+        {message.deleted && <span className="ml-2 text-xs text-muted">{t("common.deleted")}</span>}
         {actions && !meta.readOnly && !message.deleted && !author.is_moderator && (
           <div className="mt-2 hidden gap-2 group-hover:flex">
-            <ActionButton onClick={() => moderate(message, { kind: "delete_message", message_id: message.id }, "Message supprimé")}>
-              Supprimer
+            <ActionButton onClick={() => moderate(message, { kind: "delete_message", message_id: message.id }, t("common.messageDeleted"))}>
+              {t("common.delete")}
             </ActionButton>
-            <ActionButton onClick={() => moderate(message, { kind: "timeout", user_id: author.external_id, seconds: 600 }, "Timeout 10 min")}>
-              Timeout 10 min
+            <ActionButton onClick={() => moderate(message, { kind: "timeout", user_id: author.external_id, seconds: 600 }, t("common.timeout10"))}>
+              {t("common.timeout10")}
             </ActionButton>
-            <ActionButton onClick={() => moderate(message, { kind: "ban", user_id: author.external_id }, "Banni")}>Bannir</ActionButton>
+            <ActionButton onClick={() => moderate(message, { kind: "ban", user_id: author.external_id }, t("common.banned"))}>{t("common.ban")}</ActionButton>
           </div>
         )}
       </div>
