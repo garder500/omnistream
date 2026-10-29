@@ -1,6 +1,7 @@
 //! Base SQLite locale : comptes, destinations de stream, préférences, historique du chat.
 
 mod automation;
+mod history;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -8,14 +9,20 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 use crate::auth::TokenSet;
-use crate::domain::{Account, Channel, Platform, StreamDestination};
+use crate::automod::Rule;
+use crate::domain::{Account, Channel, Platform, StreamDestination, StreamPreset};
 use crate::Result;
+
+pub use history::{SessionDetail, SessionSummary, ViewerPoint, ViewerSampleInput, SESSION_GAP_MS};
 
 // Ordre = version (`PRAGMA user_version`) : n'insérer qu'en fin de liste, jamais au milieu.
 // Le numéro du fichier (0130...) sert à repérer les migrations des différentes fonctionnalités.
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_tokens.sql"),
+    include_str!("migrations/0140_presets.sql"),
+    include_str!("migrations/0100_automod.sql"),
+    include_str!("migrations/0120_sessions.sql"),
     include_str!("migrations/0130_automations.sql"),
 ];
 
@@ -34,7 +41,9 @@ impl Database {
 
     fn from_connection(conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", true)?;
-        let db = Self { conn: Mutex::new(conn) };
+        let db = Self {
+            conn: Mutex::new(conn),
+        };
         db.migrate()?;
         Ok(db)
     }
@@ -61,7 +70,9 @@ impl Database {
 
     pub fn list_accounts(&self) -> Result<Vec<Account>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, platform, display_name, login FROM accounts ORDER BY display_name")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, platform, display_name, login FROM accounts ORDER BY display_name",
+        )?;
         let rows = stmt.query_map([], |r| {
             Ok(Account {
                 id: r.get(0)?,
@@ -75,7 +86,10 @@ impl Database {
 
     /// Supprime le compte, ses jetons (cascade) et détache ses chaînes.
     pub fn delete_account(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM accounts WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM accounts WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -98,7 +112,11 @@ impl Database {
             "SELECT access_token, refresh_token, expires_at FROM account_tokens WHERE account_id = ?1",
         )?;
         let mut rows = stmt.query_map([account_id], |r| {
-            Ok(TokenSet { access_token: r.get(0)?, refresh_token: r.get(1)?, expires_at: r.get(2)? })
+            Ok(TokenSet {
+                access_token: r.get(0)?,
+                refresh_token: r.get(1)?,
+                expires_at: r.get(2)?,
+            })
         })?;
         Ok(rows.next().transpose()?)
     }
@@ -114,7 +132,9 @@ impl Database {
 
     pub fn list_channels(&self) -> Result<Vec<Channel>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, platform, external_id, display_name FROM channels ORDER BY rowid")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, platform, external_id, display_name FROM channels ORDER BY rowid",
+        )?;
         let rows = stmt.query_map([], |r| {
             Ok(Channel {
                 id: r.get(0)?,
@@ -127,7 +147,10 @@ impl Database {
     }
 
     pub fn delete_channel(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM channels WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM channels WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -152,7 +175,14 @@ impl Database {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(id) DO UPDATE SET name = excluded.name, rtmp_url = excluded.rtmp_url,
                stream_key = excluded.stream_key, enabled = excluded.enabled",
-            (&d.id, d.platform.as_str(), &d.name, &d.rtmp_url, &d.stream_key, d.enabled),
+            (
+                &d.id,
+                d.platform.as_str(),
+                &d.name,
+                &d.rtmp_url,
+                &d.stream_key,
+                d.enabled,
+            ),
         )?;
         Ok(())
     }
@@ -162,7 +192,10 @@ impl Database {
     }
 
     pub fn delete_destination(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM stream_destinations WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM stream_destinations WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -183,11 +216,149 @@ impl Database {
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
+
+    pub fn save_preset(&self, p: &StreamPreset) -> Result<()> {
+        let tags =
+            serde_json::to_string(&p.tags).map_err(|e| crate::Error::Other(e.to_string()))?;
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO stream_presets (id, name, title, category, tags) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, title = excluded.title,
+               category = excluded.category, tags = excluded.tags",
+            (&p.id, &p.name, &p.title, &p.category, tags),
+        )?;
+        Ok(())
+    }
+
+    pub fn list_presets(&self) -> Result<Vec<StreamPreset>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, name, title, category, tags FROM stream_presets ORDER BY name")?;
+        let rows = stmt.query_map([], |r| {
+            let tags: String = r.get(4)?;
+            Ok(StreamPreset {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                title: r.get(2)?,
+                category: r.get(3)?,
+                tags: serde_json::from_str(&tags).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn delete_preset(&self, id: &str) -> Result<()> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM stream_presets WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn save_automod_rule(&self, r: &Rule) -> Result<()> {
+        let json = |e: serde_json::Error| crate::Error::Other(e.to_string());
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO automod_rules (id, name, enabled, score, kind, action, platforms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, enabled = excluded.enabled,
+               score = excluded.score, kind = excluded.kind, action = excluded.action,
+               platforms = excluded.platforms",
+            (
+                &r.id,
+                &r.name,
+                r.enabled,
+                r.score,
+                serde_json::to_string(&r.kind).map_err(json)?,
+                serde_json::to_string(&r.action).map_err(json)?,
+                serde_json::to_string(&r.platforms).map_err(json)?,
+            ),
+        )?;
+        Ok(())
+    }
+
+    /// Règles d'automod dans l'ordre de création ; une ligne illisible est ignorée.
+    pub fn list_automod_rules(&self) -> Result<Vec<Rule>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, name, enabled, score, kind, action, platforms FROM automod_rules ORDER BY rowid")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, bool>(2)?,
+                r.get::<_, u32>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+            ))
+        })?;
+        let mut rules = Vec::new();
+        for row in rows {
+            let (id, name, enabled, score, kind, action, platforms) = row?;
+            let parsed = (|| {
+                Some(Rule {
+                    id,
+                    name,
+                    enabled,
+                    score,
+                    kind: serde_json::from_str(&kind).ok()?,
+                    action: serde_json::from_str(&action).ok()?,
+                    platforms: serde_json::from_str(&platforms).ok()?,
+                })
+            })();
+            rules.extend(parsed);
+        }
+        Ok(rules)
+    }
+
+    pub fn delete_automod_rule(&self, id: &str) -> Result<()> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM automod_rules WHERE id = ?1", [id])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automod::{RuleAction, RuleKind};
+
+    #[test]
+    fn automod_rules_crud_with_default_seed() {
+        let db = Database::open_in_memory().unwrap();
+        let defaults = db.list_automod_rules().unwrap();
+        assert_eq!(defaults.len(), 4);
+        assert!(defaults
+            .iter()
+            .all(|r| r.enabled && r.action == RuleAction::Flag));
+        assert!(defaults
+            .iter()
+            .all(|r| crate::automod::validate_rule(r).is_ok()));
+
+        let rule = Rule {
+            id: "r1".into(),
+            name: "Mots".into(),
+            enabled: true,
+            score: 50,
+            kind: RuleKind::BannedWords {
+                words: vec!["nul".into()],
+            },
+            action: RuleAction::Timeout { seconds: 120 },
+            platforms: vec![Platform::Kick, Platform::Other("x".into())],
+        };
+        db.save_automod_rule(&rule).unwrap();
+        let mut edited = rule.clone();
+        edited.enabled = false;
+        edited.name = "Mots 2".into();
+        db.save_automod_rule(&edited).unwrap();
+        let all = db.list_automod_rules().unwrap();
+        assert_eq!(all.len(), 5);
+        assert_eq!(all.last().unwrap(), &edited);
+        db.delete_automod_rule("r1").unwrap();
+        db.delete_automod_rule("default-caps").unwrap();
+        assert_eq!(db.list_automod_rules().unwrap().len(), 3);
+    }
 
     #[test]
     fn roundtrips_destinations_and_accounts() {
@@ -223,13 +394,29 @@ mod tests {
             login: "garder".into(),
         })
         .unwrap();
-        let tokens = TokenSet { access_token: "a".into(), refresh_token: Some("r".into()), expires_at: Some(10) };
+        let tokens = TokenSet {
+            access_token: "a".into(),
+            refresh_token: Some("r".into()),
+            expires_at: Some(10),
+        };
         db.save_tokens("42", &tokens).unwrap();
-        assert_eq!(db.load_tokens("42").unwrap().unwrap().refresh_token.as_deref(), Some("r"));
+        assert_eq!(
+            db.load_tokens("42")
+                .unwrap()
+                .unwrap()
+                .refresh_token
+                .as_deref(),
+            Some("r")
+        );
         db.delete_account("42").unwrap();
         assert!(db.load_tokens("42").unwrap().is_none());
 
-        let ch = Channel { id: "twitch:garder".into(), platform: Platform::Twitch, external_id: "garder".into(), display_name: "garder".into() };
+        let ch = Channel {
+            id: "twitch:garder".into(),
+            platform: Platform::Twitch,
+            external_id: "garder".into(),
+            display_name: "garder".into(),
+        };
         db.save_channel(&ch).unwrap();
         assert_eq!(db.list_channels().unwrap(), vec![ch]);
         db.delete_channel("twitch:garder").unwrap();
@@ -239,5 +426,29 @@ mod tests {
         db.set_setting("k", "v").unwrap();
         db.set_setting("k", "w").unwrap();
         assert_eq!(db.get_setting("k").unwrap().as_deref(), Some("w"));
+    }
+
+    #[test]
+    fn roundtrips_presets() {
+        let db = Database::open_in_memory().unwrap();
+        let p = StreamPreset {
+            id: "p1".into(),
+            name: "Just Chatting".into(),
+            title: "On papote".into(),
+            category: "Just Chatting".into(),
+            tags: vec!["Français".into(), "chill".into()],
+        };
+        db.save_preset(&p).unwrap();
+        db.save_preset(&StreamPreset {
+            title: "Autre".into(),
+            ..p.clone()
+        })
+        .unwrap();
+        let list = db.list_presets().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "Autre");
+        assert_eq!(list[0].tags, p.tags);
+        db.delete_preset("p1").unwrap();
+        assert!(db.list_presets().unwrap().is_empty());
     }
 }

@@ -37,7 +37,11 @@ pub struct AutomationService {
 }
 
 impl AutomationService {
-    pub fn new(db: Arc<Database>, connectors: ConnectorRegistry, clock: Arc<dyn Clock>) -> Result<Self> {
+    pub fn new(
+        db: Arc<Database>,
+        connectors: ConnectorRegistry,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self> {
         let svc = Self {
             db,
             connectors,
@@ -71,7 +75,9 @@ impl AutomationService {
         let auto = match event {
             ChatEvent::Message(m) => {
                 // Le bot écrit avec le compte du diffuseur : on n'ignore que ses propres échos.
-                if self.engine.lock().unwrap().is_broadcaster(m) && self.is_echo(&m.channel_id, &m.text) {
+                if self.engine.lock().unwrap().is_broadcaster(m)
+                    && self.is_echo(&m.channel_id, &m.text)
+                {
                     return;
                 }
                 AutoEvent::Message(m.clone())
@@ -93,10 +99,18 @@ impl AutomationService {
     pub async fn poll_live(&self) {
         let channels = self.db.list_channels().unwrap_or_default();
         for channel in channels {
-            let Ok(connector) = self.connectors.get(&channel.platform) else { continue };
+            let Ok(connector) = self.connectors.get(&channel.platform) else {
+                continue;
+            };
             // En cas d'erreur réseau on ne conclut rien : pas de faux « fin de stream ».
-            let Ok(info) = connector.stream_info(&channel).await else { continue };
-            let effects = self.engine.lock().unwrap().observe_live(&channel.id, &channel.platform, info.is_some());
+            let Ok(info) = connector.stream_info(&channel).await else {
+                continue;
+            };
+            let effects = self.engine.lock().unwrap().observe_live(
+                &channel.id,
+                &channel.platform,
+                info.is_some(),
+            );
             self.execute(effects).await;
         }
     }
@@ -110,7 +124,12 @@ impl AutomationService {
 
     fn push_log(&self, origin: &str, summary: String, error: Option<String>) {
         let mut log = self.log.lock().unwrap();
-        log.push_front(LogEntry { at_ms: self.clock.now_ms(), origin: origin.to_string(), summary, error });
+        log.push_front(LogEntry {
+            at_ms: self.clock.now_ms(),
+            origin: origin.to_string(),
+            summary,
+            error,
+        });
         log.truncate(MAX_LOG);
     }
 
@@ -121,14 +140,25 @@ impl AutomationService {
         let channels = self.db.list_channels().unwrap_or_default();
         for effect in effects {
             match effect {
-                Effect::Send { scope, text, origin } => {
+                Effect::Send {
+                    scope,
+                    text,
+                    origin,
+                } => {
                     let targets: Vec<&Channel> = match &scope {
                         Scope::Channel(id) => channels.iter().filter(|c| &c.id == id).collect(),
                         Scope::AllChannels => channels.iter().collect(),
-                        Scope::Platforms(ps) => channels.iter().filter(|c| ps.contains(&c.platform)).collect(),
+                        Scope::Platforms(ps) => channels
+                            .iter()
+                            .filter(|c| ps.contains(&c.platform))
+                            .collect(),
                     };
                     if targets.is_empty() {
-                        self.push_log(&origin, format!("« {text} » : aucune chaîne cible"), Some("aucune chaîne cible".into()));
+                        self.push_log(
+                            &origin,
+                            format!("« {text} » : aucune chaîne cible"),
+                            Some("aucune chaîne cible".into()),
+                        );
                     }
                     for channel in targets {
                         let res = match self.connectors.get(&channel.platform) {
@@ -136,7 +166,11 @@ impl AutomationService {
                             Err(e) => Err(e),
                         };
                         if res.is_ok() {
-                            self.sent.lock().unwrap().push((channel.id.clone(), text.clone(), self.clock.now_ms()));
+                            self.sent.lock().unwrap().push((
+                                channel.id.clone(),
+                                text.clone(),
+                                self.clock.now_ms(),
+                            ));
                         }
                         self.push_log(
                             &origin,
@@ -145,14 +179,26 @@ impl AutomationService {
                         );
                     }
                 }
-                Effect::Moderate { channel_id, kind, origin } => {
+                Effect::Moderate {
+                    channel_id,
+                    kind,
+                    origin,
+                } => {
                     let summary = format!("Modération ({}) sur {channel_id}", kind.name());
                     let res = match channels.iter().find(|c| c.id == channel_id) {
                         Some(channel) => match self.connectors.get(&channel.platform) {
-                            Ok(c) => c.moderate(&ModerationAction { channel: channel.clone(), kind }).await,
+                            Ok(c) => {
+                                c.moderate(&ModerationAction {
+                                    channel: channel.clone(),
+                                    kind,
+                                })
+                                .await
+                            }
                             Err(e) => Err(e),
                         },
-                        None => Err(crate::Error::Other(format!("chaîne inconnue: {channel_id}"))),
+                        None => Err(crate::Error::Other(format!(
+                            "chaîne inconnue: {channel_id}"
+                        ))),
                     };
                     self.push_log(&origin, summary, res.err().map(|e| e.to_string()));
                 }
@@ -166,7 +212,9 @@ mod tests {
     use super::*;
     use crate::automation::{Action, ChatCommand, ManualClock, Role, Rule, Target, Trigger};
     use crate::connectors::ChatConnector;
-    use crate::domain::{ChatAuthor, ChatMessage, Platform, StreamEvent, StreamEventKind, StreamInfo};
+    use crate::domain::{
+        ChatAuthor, ChatMessage, Platform, StreamEvent, StreamEventKind, StreamInfo,
+    };
     use async_trait::async_trait;
     use tokio::sync::mpsc;
 
@@ -179,7 +227,12 @@ mod tests {
 
     impl Mock {
         fn new(platform: Platform) -> Arc<Self> {
-            Arc::new(Self { platform, sent: Mutex::default(), moderated: Mutex::default(), live: Mutex::new(Some(false)) })
+            Arc::new(Self {
+                platform,
+                sent: Mutex::default(),
+                moderated: Mutex::default(),
+                live: Mutex::new(Some(false)),
+            })
         }
     }
 
@@ -195,26 +248,49 @@ mod tests {
             Ok(())
         }
         async fn send_message(&self, c: &Channel, text: &str) -> Result<()> {
-            self.sent.lock().unwrap().push((c.id.clone(), text.to_string()));
+            self.sent
+                .lock()
+                .unwrap()
+                .push((c.id.clone(), text.to_string()));
             Ok(())
         }
         async fn moderate(&self, a: &ModerationAction) -> Result<()> {
-            self.moderated.lock().unwrap().push(a.kind.name().to_string());
+            self.moderated
+                .lock()
+                .unwrap()
+                .push(a.kind.name().to_string());
             Ok(())
         }
         async fn stream_info(&self, c: &Channel) -> Result<Option<StreamInfo>> {
             match *self.live.lock().unwrap() {
                 None => Err(crate::Error::Network("hors ligne".into())),
                 Some(false) => Ok(None),
-                Some(true) => Ok(Some(StreamInfo { channel_id: c.id.clone(), title: "t".into(), viewers: 1, started_at: "".into() })),
+                Some(true) => Ok(Some(StreamInfo {
+                    channel_id: c.id.clone(),
+                    title: "t".into(),
+                    viewers: 1,
+                    started_at: "".into(),
+                })),
             }
         }
     }
 
-    fn setup() -> (AutomationService, Arc<Mock>, Arc<Mock>, Arc<ManualClock>, Arc<Database>) {
+    fn setup() -> (
+        AutomationService,
+        Arc<Mock>,
+        Arc<Mock>,
+        Arc<ManualClock>,
+        Arc<Database>,
+    ) {
         let db = Arc::new(Database::open_in_memory().unwrap());
         for (p, id) in [(Platform::Twitch, "twitch:g"), (Platform::Kick, "kick:g")] {
-            db.save_channel(&Channel { id: id.into(), platform: p, external_id: "g".into(), display_name: "g".into() }).unwrap();
+            db.save_channel(&Channel {
+                id: id.into(),
+                platform: p,
+                external_id: "g".into(),
+                display_name: "g".into(),
+            })
+            .unwrap();
         }
         let tw = Mock::new(Platform::Twitch);
         let kick = Mock::new(Platform::Kick);
@@ -236,9 +312,17 @@ mod tests {
             id: "m".into(),
             channel_id: id,
             platform,
-            author: ChatAuthor { external_id: format!("id-{who}"), display_name: who.into(), is_moderator: false, is_subscriber: false },
+            author: ChatAuthor {
+                external_id: format!("id-{who}"),
+                display_name: who.into(),
+                is_moderator: false,
+                is_subscriber: false,
+            },
             text: text.into(),
             timestamp_ms: 0,
+            emotes: vec![],
+            badges: vec![],
+            room_id: None,
         })
     }
 
@@ -259,10 +343,14 @@ mod tests {
     #[tokio::test]
     async fn command_from_kick_replies_on_kick_only() {
         let (svc, tw, kick, _, db) = setup();
-        db.save_command(&command("hi", "salut {user}", Target::Source)).unwrap();
+        db.save_command(&command("hi", "salut {user}", Target::Source))
+            .unwrap();
         svc.reload().unwrap();
         svc.on_chat_event(&chat(Platform::Kick, "!hi")).await;
-        assert_eq!(*kick.sent.lock().unwrap(), vec![("kick:g".to_string(), "salut Alice".to_string())]);
+        assert_eq!(
+            *kick.sent.lock().unwrap(),
+            vec![("kick:g".to_string(), "salut Alice".to_string())]
+        );
         assert!(tw.sent.lock().unwrap().is_empty());
         assert_eq!(svc.recent_log().len(), 1);
     }
@@ -280,7 +368,8 @@ mod tests {
     #[tokio::test]
     async fn own_replies_echoed_back_are_ignored_for_a_while() {
         let (svc, tw, _, clock, db) = setup();
-        db.save_command(&command("hi", "!hi", Target::Source)).unwrap(); // pire cas : la réponse est elle-même une commande
+        db.save_command(&command("hi", "!hi", Target::Source))
+            .unwrap(); // pire cas : la réponse est elle-même une commande
         svc.reload().unwrap();
         svc.on_chat_event(&chat(Platform::Twitch, "!hi")).await;
         assert_eq!(tw.sent.lock().unwrap().len(), 1);
@@ -288,10 +377,16 @@ mod tests {
         svc.on_chat_event(&chat(Platform::Twitch, "!hi")).await;
         assert_eq!(tw.sent.lock().unwrap().len(), 2);
         // Le compte du diffuseur (= le bot) qui revoit son propre message : ignoré, pas de boucle.
-        svc.on_chat_event(&chat_as(Platform::Twitch, "!hi", "g")).await;
-        assert_eq!(tw.sent.lock().unwrap().len(), 2, "écho ignoré, pas de boucle");
+        svc.on_chat_event(&chat_as(Platform::Twitch, "!hi", "g"))
+            .await;
+        assert_eq!(
+            tw.sent.lock().unwrap().len(),
+            2,
+            "écho ignoré, pas de boucle"
+        );
         clock.advance_secs(16);
-        svc.on_chat_event(&chat_as(Platform::Twitch, "!hi", "g")).await;
+        svc.on_chat_event(&chat_as(Platform::Twitch, "!hi", "g"))
+            .await;
         assert_eq!(tw.sent.lock().unwrap().len(), 3);
     }
 
@@ -302,7 +397,9 @@ mod tests {
             id: "r".into(),
             name: "anti-spam".into(),
             enabled: true,
-            trigger: Trigger::Message { contains: "spam".into() },
+            trigger: Trigger::Message {
+                contains: "spam".into(),
+            },
             action: Action::Timeout { seconds: 60 },
             platforms: vec![],
             cooldown_secs: 0,
@@ -321,13 +418,19 @@ mod tests {
             name: id.into(),
             enabled: true,
             trigger,
-            action: Action::SendMessage { target, text: id.into() },
+            action: Action::SendMessage {
+                target,
+                text: id.into(),
+            },
             platforms: vec![],
             cooldown_secs: 0,
         };
-        db.save_rule(&say("follow", Trigger::Follow, Target::Source)).unwrap();
-        db.save_rule(&say("tic", Trigger::Timer { every_secs: 30 }, Target::All)).unwrap();
-        db.save_rule(&say("live", Trigger::StreamStart, Target::All)).unwrap();
+        db.save_rule(&say("follow", Trigger::Follow, Target::Source))
+            .unwrap();
+        db.save_rule(&say("tic", Trigger::Timer { every_secs: 30 }, Target::All))
+            .unwrap();
+        db.save_rule(&say("live", Trigger::StreamStart, Target::All))
+            .unwrap();
         svc.reload().unwrap();
 
         svc.on_chat_event(&ChatEvent::Event(StreamEvent {
@@ -355,17 +458,37 @@ mod tests {
         svc.poll_live().await;
         *tw.live.lock().unwrap() = Some(true);
         svc.poll_live().await;
-        let live_msgs = |m: &Arc<Mock>| m.sent.lock().unwrap().iter().filter(|(_, t)| t == "live").count();
-        assert_eq!(live_msgs(&tw), 1, "le début de live est envoyé sur toutes les chaînes");
+        let live_msgs = |m: &Arc<Mock>| {
+            m.sent
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, t)| t == "live")
+                .count()
+        };
+        assert_eq!(
+            live_msgs(&tw),
+            1,
+            "le début de live est envoyé sur toutes les chaînes"
+        );
         assert_eq!(live_msgs(&kick), 1);
         svc.poll_live().await;
-        assert_eq!(live_msgs(&kick), 1, "pas de nouveau déclenchement tant que le live continue");
+        assert_eq!(
+            live_msgs(&kick),
+            1,
+            "pas de nouveau déclenchement tant que le live continue"
+        );
     }
 
     #[tokio::test]
     async fn missing_target_is_logged_not_fatal() {
         let (svc, _, _, _, _) = setup();
-        svc.execute(vec![Effect::Send { scope: Scope::Channel("nope".into()), text: "x".into(), origin: "o".into() }]).await;
+        svc.execute(vec![Effect::Send {
+            scope: Scope::Channel("nope".into()),
+            text: "x".into(),
+            origin: "o".into(),
+        }])
+        .await;
         let log = svc.recent_log();
         assert_eq!(log.len(), 1);
         assert!(log[0].error.is_some());

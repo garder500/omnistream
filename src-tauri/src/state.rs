@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use omnistream_core::automation::SystemClock;
 use omnistream_core::automation_service::AutomationService;
-use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TwitchConnector};
+use omnistream_core::automod::AutoMod;
+use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
 use omnistream_core::secrets::KeyringStore;
@@ -13,9 +14,11 @@ use tokio::sync::mpsc;
 pub struct AppState {
     pub db: Arc<Database>,
     pub twitch: TwitchConnector,
+    pub trovo: TrovoConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
     pub automation: Arc<AutomationService>,
+    pub automod: std::sync::Mutex<AutoMod>,
     pub streams: StreamService,
     pub chat_tx: mpsc::Sender<ChatEvent>,
 }
@@ -32,15 +35,35 @@ impl AppState {
             }
         }));
 
+        let trovo = TrovoConnector::new();
+        let trovo_db = db.clone();
+        trovo.on_token_refresh(Arc::new(move |user_id, tokens| {
+            if let Err(e) = trovo_db.save_tokens(user_id, tokens) {
+                eprintln!("impossible d'enregistrer les jetons Trovo renouvelés: {e}");
+            }
+        }));
+
         let mut connectors = ConnectorRegistry::new();
         connectors.register(Arc::new(twitch.clone()));
+        connectors.register(Arc::new(trovo.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
-        let automation = Arc::new(AutomationService::new(db.clone(), connectors.clone(), Arc::new(SystemClock))?);
+        let automation = Arc::new(AutomationService::new(
+            db.clone(),
+            connectors.clone(),
+            Arc::new(SystemClock),
+        )?);
+        let automod =
+            std::sync::Mutex::new(AutoMod::new(db.list_automod_rules().unwrap_or_else(|e| {
+                eprintln!("automod: règles illisibles, automod désactivé: {e}");
+                Vec::new()
+            })));
         let state = Self {
             db,
+            automod,
             automation,
             twitch,
+            trovo,
             moderation: ModerationEngine::new(connectors.clone()),
             connectors,
             streams,

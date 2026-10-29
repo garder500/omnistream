@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AutomodRules from "../components/AutomodRules";
 import { Avatar, Button, Card, PageHeader } from "../components/ui";
 import { PlatformBadge, platformKey } from "../lib/platforms";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
@@ -9,11 +10,33 @@ export default function Moderation() {
   const [selectedId, setSelectedId] = useState<string>();
   const selected = queue.find((m) => m.id === selectedId) ?? queue[0];
   const channel = channels.find((c) => c.id === selected?.channel_id);
+  const [tab, setTab] = useState<"queue" | "rules">("queue");
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Modération" subtitle="Les messages suspects (liens, majuscules, répétitions) arrivent ici en temps réel" />
+      <PageHeader
+        title="Modération"
+        subtitle="Les messages qui déclenchent une règle d'automod arrivent ici en temps réel"
+        actions={
+          <div role="tablist" className="flex gap-1.5">
+            {(["queue", "rules"] as const).map((t) => (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={`rounded-full px-4 py-2 font-semibold ${tab === t ? "bg-brand-soft text-brand-ring" : "text-muted hover:text-zinc-100"}`}
+              >
+                {t === "queue" ? "File" : "Règles d'automod"}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
+      {tab === "rules" ? (
+        <AutomodRules />
+      ) : (
       <div className="flex min-h-0 flex-1 gap-5">
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex gap-1.5 border-b border-line p-3.5">
@@ -85,6 +108,7 @@ export default function Moderation() {
           )}
         </Card>
       </div>
+      )}
     </div>
   );
 }

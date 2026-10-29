@@ -65,7 +65,10 @@ impl Database {
     }
 
     pub fn delete_rule(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM automation_rules WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM automation_rules WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -94,7 +97,9 @@ impl Database {
             ),
         );
         match res {
-            Err(rusqlite::Error::SqliteFailure(e, _)) if e.code == rusqlite::ErrorCode::ConstraintViolation => {
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
                 Err(Error::Other(format!("la commande !{} existe déjà", c.name)))
             }
             other => other.map(|_| ()).map_err(Into::into),
@@ -136,7 +141,10 @@ impl Database {
     }
 
     pub fn delete_command(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM chat_commands WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM chat_commands WHERE id = ?1", [id])?;
         Ok(())
     }
 }
@@ -155,7 +163,10 @@ mod tests {
             name: "Merci".into(),
             enabled: true,
             trigger: Trigger::Raid { min_viewers: 5 },
-            action: Action::SendMessage { target: Target::All, text: "Merci {user} !".into() },
+            action: Action::SendMessage {
+                target: Target::All,
+                text: "Merci {user} !".into(),
+            },
             platforms: vec![Platform::Twitch, Platform::Kick],
             cooldown_secs: 7,
         };
@@ -205,16 +216,25 @@ mod tests {
             user_cooldown_secs: 5,
             min_role: Role::Moderator,
             platforms: vec![Platform::Kick],
-            reply: Target::Platforms { platforms: vec![Platform::Twitch] },
+            reply: Target::Platforms {
+                platforms: vec![Platform::Twitch],
+            },
         };
         db.save_command(&c).unwrap();
         assert_eq!(db.list_commands().unwrap(), vec![c.clone()]);
 
-        let dup = ChatCommand { id: "c2".into(), name: "Discord".into(), ..c.clone() };
+        let dup = ChatCommand {
+            id: "c2".into(),
+            name: "Discord".into(),
+            ..c.clone()
+        };
         let err = db.save_command(&dup).unwrap_err().to_string();
         assert!(err.contains("existe déjà"), "{err}");
 
-        let renamed = ChatCommand { name: "dc".into(), ..c.clone() };
+        let renamed = ChatCommand {
+            name: "dc".into(),
+            ..c.clone()
+        };
         db.save_command(&renamed).unwrap();
         assert_eq!(db.list_commands().unwrap(), vec![renamed]);
         db.delete_command("c1").unwrap();

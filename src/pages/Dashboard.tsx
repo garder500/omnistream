@@ -1,19 +1,23 @@
 import { ChatMessage } from "../components/ChatMessage";
+import { StreamInfoForm } from "../components/StreamInfoForm";
 import { Badge, Card, CardHeader, LinkButton, LiveBadge, PageHeader } from "../components/ui";
 import { PlatformBadge, PLATFORM_KEYS, PLATFORMS, platformKey } from "../lib/platforms";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
+import { estimateUnique, viewersByPlatform } from "../lib/viewers";
 
 type Go = (id: "chat" | "moderation" | "accounts") => void;
 
 export default function Dashboard({ go }: { go: Go }) {
-  const { messages, channels, connected, infos, msgPerMin, accounts } = useStore();
+  const { messages, channels, connected, infos, msgPerMin, accounts, overlap } = useStore();
   const live = infos.length > 0;
-  const viewers = infos.reduce((n, i) => n + i.viewers, 0);
+  const estimate = estimateUnique(viewersByPlatform(infos, channels), overlap);
+  const viewers = estimate.total;
+  const multi = infos.length > 1 && estimate.reliable;
   const online = channels.filter((c) => connected[c.id]).length;
   const flagged = flaggedQueue(messages).length;
 
   const stats = [
-    { label: "Spectateurs cumulés", value: live ? viewers.toLocaleString("fr-FR") : "—", hint: live ? "Mis à jour toutes les 30 s" : "Aucun live détecté" },
+    { label: "Spectateurs cumulés", value: live ? viewers.toLocaleString("fr-FR") : "—", hint: !live ? "Aucun live détecté" : multi ? `≈ ${estimate.unique.toLocaleString("fr-FR")} uniques (estimation)` : "Somme brute · mise à jour toutes les 30 s", title: multi ? `Estimation du dédoublonnage : ${Math.round(estimate.overlapRate * 100)} % des chatteurs sont sur plusieurs plateformes. Fourchette ${estimate.low.toLocaleString("fr-FR")} à ${estimate.total.toLocaleString("fr-FR")}.` : undefined },
     { label: "Messages / minute", value: String(msgPerMin), hint: `${channels.length} chaîne${channels.length > 1 ? "s" : ""} fusionnée${channels.length > 1 ? "s" : ""}` },
     { label: "Chats connectés", value: `${online} / ${channels.length}`, hint: accounts.length ? "Compte Twitch connecté" : "Lecture seule : aucun compte", good: online === channels.length && channels.length > 0 },
     { label: "À modérer", value: String(flagged), hint: "Ouvrir la file →", warn: flagged > 0, onClick: () => go("moderation") },
@@ -29,7 +33,7 @@ export default function Dashboard({ go }: { go: Go }) {
 
       <div className="mb-5 grid grid-cols-4 gap-4">
         {stats.map((s) => (
-          <Card key={s.label} className="p-5">
+          <Card key={s.label} className="p-5" title={s.title}>
             <div className="text-muted">{s.label}</div>
             <div className={`mt-1.5 text-3xl font-bold ${s.warn ? "text-warn" : ""}`}>{s.value}</div>
             {s.onClick ? (
@@ -49,7 +53,7 @@ export default function Dashboard({ go }: { go: Go }) {
             {PLATFORM_KEYS.map((p, i) => {
               const mine = channels.filter((c) => platformKey(c.platform) === p);
               const platformViewers = infos.filter((info) => mine.some((c) => c.id === info.channel_id)).reduce((n, info) => n + info.viewers, 0);
-              const supported = p === "twitch";
+              const supported = p === "twitch" || p === "trovo";
               return (
                 <div key={p} className={`flex items-center gap-3.5 py-3.5 ${i < PLATFORM_KEYS.length - 1 ? "border-b border-line" : ""}`}>
                   <PlatformBadge platform={p} size={30} />
@@ -72,6 +76,7 @@ export default function Dashboard({ go }: { go: Go }) {
               );
             })}
           </Card>
+          <StreamInfoForm />
         </section>
 
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">

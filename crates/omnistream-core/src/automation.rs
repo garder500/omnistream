@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Channel, ChatAuthor, ChatMessage, ModerationKind, Platform, StreamEvent, StreamEventKind};
+use crate::domain::{
+    Channel, ChatAuthor, ChatMessage, ModerationKind, Platform, StreamEvent, StreamEventKind,
+};
 use crate::{Error, Result};
 
 // ---------------------------------------------------------------------------------------------
@@ -61,7 +63,9 @@ impl Clock for ManualClock {
 // ---------------------------------------------------------------------------------------------
 
 /// Rôle d'un auteur, du moins au plus privilégié.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     #[default]
@@ -97,7 +101,9 @@ impl From<&str> for Role {
 /// de la chaîne) ou à son identifiant plateforme.
 pub fn role_of(author: &ChatAuthor, channel: Option<&Channel>) -> Role {
     if let Some(c) = channel {
-        if author.display_name.eq_ignore_ascii_case(&c.external_id) || author.external_id == c.external_id {
+        if author.display_name.eq_ignore_ascii_case(&c.external_id)
+            || author.external_id == c.external_id
+        {
             return Role::Broadcaster;
         }
     }
@@ -138,7 +144,9 @@ pub enum Trigger {
         min_viewers: u32,
     },
     /// Toutes les `every_secs` secondes (≥ 1).
-    Timer { every_secs: u64 },
+    Timer {
+        every_secs: u64,
+    },
     StreamStart,
     StreamEnd,
 }
@@ -152,7 +160,9 @@ pub enum Action {
         text: String,
     },
     /// Les trois suivantes visent l'auteur du message déclencheur (déclencheur `message` requis).
-    Timeout { seconds: u32 },
+    Timeout {
+        seconds: u32,
+    },
     DeleteMessage,
     Ban {
         #[serde(default)]
@@ -208,7 +218,9 @@ impl Rule {
         }
         if let Trigger::Timer { every_secs } = self.trigger {
             if every_secs == 0 {
-                return Err(Error::Other("le minuteur doit durer au moins 1 seconde".into()));
+                return Err(Error::Other(
+                    "le minuteur doit durer au moins 1 seconde".into(),
+                ));
             }
         }
         match &self.action {
@@ -218,7 +230,9 @@ impl Rule {
             Action::Timeout { .. } | Action::DeleteMessage | Action::Ban { .. }
                 if !matches!(self.trigger, Trigger::Message { .. }) =>
             {
-                return Err(Error::Other("la modération n'est possible qu'avec le déclencheur « message »".into()));
+                return Err(Error::Other(
+                    "la modération n'est possible qu'avec le déclencheur « message »".into(),
+                ));
             }
             _ => {}
         }
@@ -232,7 +246,9 @@ impl ChatCommand {
             return Err(Error::Other("commande sans identifiant".into()));
         }
         if self.name.is_empty() || !self.name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Err(Error::Other("nom de commande invalide (lettres, chiffres et _ uniquement)".into()));
+            return Err(Error::Other(
+                "nom de commande invalide (lettres, chiffres et _ uniquement)".into(),
+            ));
         }
         if self.response.trim().is_empty() {
             return Err(Error::Other("la réponse de la commande est vide".into()));
@@ -255,8 +271,14 @@ pub enum AutoEvent {
     Message(ChatMessage),
     /// Abonnement, don de subs, raid ou follow.
     Stream(StreamEvent),
-    StreamStarted { channel_id: String, platform: Platform },
-    StreamEnded { channel_id: String, platform: Platform },
+    StreamStarted {
+        channel_id: String,
+        platform: Platform,
+    },
+    StreamEnded {
+        channel_id: String,
+        platform: Platform,
+    },
 }
 
 /// Portée d'un envoi, déjà résolue par le moteur.
@@ -269,8 +291,16 @@ pub enum Scope {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
-    Send { scope: Scope, text: String, origin: String },
-    Moderate { channel_id: String, kind: ModerationKind, origin: String },
+    Send {
+        scope: Scope,
+        text: String,
+        origin: String,
+    },
+    Moderate {
+        channel_id: String,
+        kind: ModerationKind,
+        origin: String,
+    },
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -392,7 +422,9 @@ impl Engine {
         let now = self.clock.now_ms();
         let mut effects = Vec::new();
         for rule in self.rules.iter().filter(|r| r.enabled) {
-            let Some((every, due)) = self.timers.get_mut(&rule.id) else { continue };
+            let Some((every, due)) = self.timers.get_mut(&rule.id) else {
+                continue;
+            };
             if now < *due {
                 continue;
             }
@@ -400,7 +432,11 @@ impl Engine {
             *due = now + *every as i64 * 1000;
             if let Some(mut e) = Self::action_effect(rule, None, None, &HashMap::new()) {
                 // Sans chaîne source, le filtre de plateformes de la règle restreint l'envoi.
-                if let Effect::Send { scope: scope @ Scope::AllChannels, .. } = &mut e {
+                if let Effect::Send {
+                    scope: scope @ Scope::AllChannels,
+                    ..
+                } = &mut e
+                {
                     if !rule.platforms.is_empty() {
                         *scope = Scope::Platforms(rule.platforms.clone());
                     }
@@ -414,11 +450,22 @@ impl Engine {
     /// Enregistre l'état de live d'une chaîne et renvoie les effets des transitions
     /// hors-ligne -> en ligne (`StreamStart`) et en ligne -> hors-ligne (`StreamEnd`).
     /// La première observation d'une chaîne déjà en live ne déclenche rien.
-    pub fn observe_live(&mut self, channel_id: &str, platform: &Platform, live: bool) -> Vec<Effect> {
+    pub fn observe_live(
+        &mut self,
+        channel_id: &str,
+        platform: &Platform,
+        live: bool,
+    ) -> Vec<Effect> {
         let prev = self.live.insert(channel_id.to_string(), live);
         let event = match (prev, live) {
-            (Some(false), true) => AutoEvent::StreamStarted { channel_id: channel_id.into(), platform: platform.clone() },
-            (Some(true), false) => AutoEvent::StreamEnded { channel_id: channel_id.into(), platform: platform.clone() },
+            (Some(false), true) => AutoEvent::StreamStarted {
+                channel_id: channel_id.into(),
+                platform: platform.clone(),
+            },
+            (Some(true), false) => AutoEvent::StreamEnded {
+                channel_id: channel_id.into(),
+                platform: platform.clone(),
+            },
             _ => return vec![],
         };
         self.handle(&event)
@@ -429,10 +476,14 @@ impl Engine {
     }
 
     fn run_commands(&mut self, m: &ChatMessage, effects: &mut Vec<Effect>) {
-        let Some((name, args)) = parse_command(&m.text) else { return };
+        let Some((name, args)) = parse_command(&m.text) else {
+            return;
+        };
         let now = self.clock.now_ms();
         let role = role_of(&m.author, self.channel(&m.channel_id));
-        let Some(cmd) = self.commands.iter().find(|c| c.enabled && c.name == name) else { return };
+        let Some(cmd) = self.commands.iter().find(|c| c.enabled && c.name == name) else {
+            return;
+        };
         if !cmd.platforms.is_empty() && !cmd.platforms.contains(&m.platform) {
             return;
         }
@@ -455,7 +506,11 @@ impl Engine {
         vars.insert("command", cmd.name.clone());
         let text = render(&cmd.response, &vars);
         let scope = resolve_scope(&cmd.reply, Some(&m.channel_id));
-        effects.push(Effect::Send { scope, text, origin: format!("!{}", cmd.name) });
+        effects.push(Effect::Send {
+            scope,
+            text,
+            origin: format!("!{}", cmd.name),
+        });
         self.last_fired.insert(key, now);
         self.last_user.insert(ukey, now);
     }
@@ -469,14 +524,19 @@ impl Engine {
         let now = self.clock.now_ms();
         // Le diffuseur et les modérateurs ne sont jamais ciblés par une règle de modération.
         let exempt = match event {
-            AutoEvent::Message(m) => role_of(&m.author, self.channel(&m.channel_id)) >= Role::Moderator,
+            AutoEvent::Message(m) => {
+                role_of(&m.author, self.channel(&m.channel_id)) >= Role::Moderator
+            }
             _ => false,
         };
         for rule in self.rules.iter().filter(|r| r.enabled) {
             if exempt && !matches!(rule.action, Action::SendMessage { .. }) {
                 continue;
             }
-            let Some((platform, channel_id, vars, msg)) = match_trigger(&rule.trigger, event) else { continue };
+            let Some((platform, channel_id, vars, msg)) = match_trigger(&rule.trigger, event)
+            else {
+                continue;
+            };
             if !rule.platforms.is_empty() && !rule.platforms.contains(&platform) {
                 continue;
             }
@@ -501,14 +561,19 @@ impl Engine {
     ) -> Option<Effect> {
         let origin = rule.name.clone();
         match &rule.action {
-            Action::SendMessage { target, text } => {
-                Some(Effect::Send { scope: resolve_scope(target, channel_id), text: render(text, vars), origin })
-            }
+            Action::SendMessage { target, text } => Some(Effect::Send {
+                scope: resolve_scope(target, channel_id),
+                text: render(text, vars),
+                origin,
+            }),
             Action::Timeout { seconds } => {
                 let m = msg?;
                 Some(Effect::Moderate {
                     channel_id: m.channel_id.clone(),
-                    kind: ModerationKind::Timeout { user_id: m.author.external_id.clone(), seconds: *seconds },
+                    kind: ModerationKind::Timeout {
+                        user_id: m.author.external_id.clone(),
+                        seconds: *seconds,
+                    },
                     origin,
                 })
             }
@@ -516,7 +581,9 @@ impl Engine {
                 let m = msg?;
                 Some(Effect::Moderate {
                     channel_id: m.channel_id.clone(),
-                    kind: ModerationKind::DeleteMessage { message_id: m.id.clone() },
+                    kind: ModerationKind::DeleteMessage {
+                        message_id: m.id.clone(),
+                    },
                     origin,
                 })
             }
@@ -524,7 +591,10 @@ impl Engine {
                 let m = msg?;
                 Some(Effect::Moderate {
                     channel_id: m.channel_id.clone(),
-                    kind: ModerationKind::Ban { user_id: m.author.external_id.clone(), reason: reason.clone() },
+                    kind: ModerationKind::Ban {
+                        user_id: m.author.external_id.clone(),
+                        reason: reason.clone(),
+                    },
                     origin,
                 })
             }
@@ -534,7 +604,9 @@ impl Engine {
 
 fn resolve_scope(target: &Target, source: Option<&str>) -> Scope {
     match target {
-        Target::Source => source.map(|s| Scope::Channel(s.to_string())).unwrap_or(Scope::AllChannels),
+        Target::Source => source
+            .map(|s| Scope::Channel(s.to_string()))
+            .unwrap_or(Scope::AllChannels),
         Target::All => Scope::AllChannels,
         Target::Platforms { platforms } => Scope::Platforms(platforms.clone()),
     }
@@ -553,7 +625,12 @@ fn message_vars<'a>(m: &ChatMessage, args: &str) -> HashMap<&'a str, String> {
     v
 }
 
-type Matched<'a> = (Platform, String, HashMap<&'a str, String>, Option<ChatMessage>);
+type Matched<'a> = (
+    Platform,
+    String,
+    HashMap<&'a str, String>,
+    Option<ChatMessage>,
+);
 
 /// Vérifie le déclencheur ; renvoie plateforme, chaîne, variables de gabarit et message éventuel.
 fn match_trigger<'a>(trigger: &Trigger, event: &AutoEvent) -> Option<Matched<'a>> {
@@ -564,11 +641,21 @@ fn match_trigger<'a>(trigger: &Trigger, event: &AutoEvent) -> Option<Matched<'a>
             }
             let mut vars = message_vars(m, "");
             vars.remove("args");
-            Some((m.platform.clone(), m.channel_id.clone(), vars, Some(m.clone())))
+            Some((
+                m.platform.clone(),
+                m.channel_id.clone(),
+                vars,
+                Some(m.clone()),
+            ))
         }
-        (Trigger::Follow, AutoEvent::Stream(e)) if matches!(e.kind, StreamEventKind::Follow) => Some(stream_match(e)),
+        (Trigger::Follow, AutoEvent::Stream(e)) if matches!(e.kind, StreamEventKind::Follow) => {
+            Some(stream_match(e))
+        }
         (Trigger::Sub, AutoEvent::Stream(e))
-            if matches!(e.kind, StreamEventKind::Sub { .. } | StreamEventKind::Gift { .. }) =>
+            if matches!(
+                e.kind,
+                StreamEventKind::Sub { .. } | StreamEventKind::Gift { .. }
+            ) =>
         {
             let (p, c, mut vars, m) = stream_match(e);
             if let StreamEventKind::Sub { months } = e.kind {
@@ -584,8 +671,20 @@ fn match_trigger<'a>(trigger: &Trigger, event: &AutoEvent) -> Option<Matched<'a>
             }
             _ => None,
         },
-        (Trigger::StreamStart, AutoEvent::StreamStarted { channel_id, platform })
-        | (Trigger::StreamEnd, AutoEvent::StreamEnded { channel_id, platform }) => {
+        (
+            Trigger::StreamStart,
+            AutoEvent::StreamStarted {
+                channel_id,
+                platform,
+            },
+        )
+        | (
+            Trigger::StreamEnd,
+            AutoEvent::StreamEnded {
+                channel_id,
+                platform,
+            },
+        ) => {
             let mut vars = HashMap::new();
             vars.insert("platform", platform.to_string());
             Some((platform.clone(), channel_id.clone(), vars, None))
@@ -612,7 +711,12 @@ mod tests {
     const T0: i64 = 1_000_000;
 
     fn chan(platform: Platform, login: &str) -> Channel {
-        Channel { id: format!("{platform}:{login}"), platform, external_id: login.into(), display_name: login.into() }
+        Channel {
+            id: format!("{platform}:{login}"),
+            platform,
+            external_id: login.into(),
+            display_name: login.into(),
+        }
     }
 
     fn msg(platform: Platform, login: &str, who: &str, text: &str) -> ChatMessage {
@@ -628,6 +732,9 @@ mod tests {
             },
             text: text.into(),
             timestamp_ms: T0,
+            emotes: vec![],
+            badges: vec![],
+            room_id: None,
         }
     }
 
@@ -646,17 +753,31 @@ mod tests {
     }
 
     fn rule(id: &str, trigger: Trigger, action: Action) -> Rule {
-        Rule { id: id.into(), name: id.into(), enabled: true, trigger, action, platforms: vec![], cooldown_secs: 0 }
+        Rule {
+            id: id.into(),
+            name: id.into(),
+            enabled: true,
+            trigger,
+            action,
+            platforms: vec![],
+            cooldown_secs: 0,
+        }
     }
 
     fn say(text: &str) -> Action {
-        Action::SendMessage { target: Target::All, text: text.into() }
+        Action::SendMessage {
+            target: Target::All,
+            text: text.into(),
+        }
     }
 
     fn engine() -> (Engine, Arc<ManualClock>) {
         let clock = ManualClock::new(T0);
         let mut e = Engine::new(clock.clone());
-        e.set_channels(vec![chan(Platform::Twitch, "garder"), chan(Platform::Kick, "garder")]);
+        e.set_channels(vec![
+            chan(Platform::Twitch, "garder"),
+            chan(Platform::Kick, "garder"),
+        ]);
         (e, clock)
     }
 
@@ -676,7 +797,10 @@ mod tests {
     fn render_replaces_known_and_keeps_unknown() {
         let mut v = HashMap::new();
         v.insert("user", "Bob".to_string());
-        assert_eq!(render("Salut {user} {inconnu} {", &v), "Salut Bob {inconnu} {");
+        assert_eq!(
+            render("Salut {user} {inconnu} {", &v),
+            "Salut Bob {inconnu} {"
+        );
         assert_eq!(render("{user}{user}", &v), "BobBob");
         assert_eq!(render("sans variable", &v), "sans variable");
         assert_eq!(render("é{user}é", &v), "éBobé");
@@ -684,8 +808,14 @@ mod tests {
 
     #[test]
     fn parse_command_cases() {
-        assert_eq!(parse_command("!Discord"), Some(("discord".into(), "".into())));
-        assert_eq!(parse_command("  !so  Bob  hello "), Some(("so".into(), "Bob  hello".into())));
+        assert_eq!(
+            parse_command("!Discord"),
+            Some(("discord".into(), "".into()))
+        );
+        assert_eq!(
+            parse_command("  !so  Bob  hello "),
+            Some(("so".into(), "Bob  hello".into()))
+        );
         assert_eq!(parse_command("! rien"), None);
         assert_eq!(parse_command("!"), None);
         assert_eq!(parse_command("salut !discord"), None);
@@ -694,8 +824,16 @@ mod tests {
     #[test]
     fn command_replies_on_source_channel_with_variables() {
         let (mut e, _) = engine();
-        e.set_commands(vec![cmd("so", "Allez voir {arg1} ! (demandé par {user} sur {platform})")]);
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Kick, "garder", "Alice", "!SO Bob extra")));
+        e.set_commands(vec![cmd(
+            "so",
+            "Allez voir {arg1} ! (demandé par {user} sur {platform})",
+        )]);
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Kick,
+            "garder",
+            "Alice",
+            "!SO Bob extra",
+        )));
         assert_eq!(
             fx,
             vec![Effect::Send {
@@ -710,8 +848,17 @@ mod tests {
     fn command_defined_once_works_on_every_platform() {
         let (mut e, _) = engine();
         e.set_commands(vec![cmd("discord", "discord.gg/x")]);
-        for p in [Platform::Twitch, Platform::Kick, Platform::Youtube, Platform::Tiktok] {
-            assert_eq!(e.handle(&AutoEvent::Message(msg(p, "garder", "A", "!discord"))).len(), 1);
+        for p in [
+            Platform::Twitch,
+            Platform::Kick,
+            Platform::Youtube,
+            Platform::Tiktok,
+        ] {
+            assert_eq!(
+                e.handle(&AutoEvent::Message(msg(p, "garder", "A", "!discord")))
+                    .len(),
+                1
+            );
         }
     }
 
@@ -721,12 +868,32 @@ mod tests {
         let mut c = cmd("hello", "hi");
         c.reply = Target::All;
         let mut d = cmd("yt", "hi");
-        d.reply = Target::Platforms { platforms: vec![Platform::Youtube] };
+        d.reply = Target::Platforms {
+            platforms: vec![Platform::Youtube],
+        };
         e.set_commands(vec![c, d]);
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!hello")));
-        assert!(matches!(&fx[0], Effect::Send { scope: Scope::AllChannels, .. }));
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!yt")));
-        assert!(matches!(&fx[0], Effect::Send { scope: Scope::Platforms(p), .. } if p == &vec![Platform::Youtube]));
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Twitch,
+            "garder",
+            "A",
+            "!hello",
+        )));
+        assert!(matches!(
+            &fx[0],
+            Effect::Send {
+                scope: Scope::AllChannels,
+                ..
+            }
+        ));
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Twitch,
+            "garder",
+            "A",
+            "!yt",
+        )));
+        assert!(
+            matches!(&fx[0], Effect::Send { scope: Scope::Platforms(p), .. } if p == &vec![Platform::Youtube])
+        );
     }
 
     #[test]
@@ -737,10 +904,40 @@ mod tests {
         let mut only_twitch = cmd("tw", "x");
         only_twitch.platforms = vec![Platform::Twitch];
         e.set_commands(vec![off, only_twitch]);
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!off"))).is_empty());
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!nope"))).is_empty());
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Kick, "garder", "A", "!tw"))).is_empty());
-        assert_eq!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!tw"))).len(), 1);
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "A",
+                "!off"
+            )))
+            .is_empty());
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "A",
+                "!nope"
+            )))
+            .is_empty());
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Kick,
+                "garder",
+                "A",
+                "!tw"
+            )))
+            .is_empty());
+        assert_eq!(
+            e.handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "A",
+                "!tw"
+            )))
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -751,7 +948,10 @@ mod tests {
         e.set_commands(vec![c]);
         let m = |who| AutoEvent::Message(msg(Platform::Twitch, "garder", who, "!lurk"));
         assert_eq!(e.handle(&m("A")).len(), 1);
-        assert!(e.handle(&m("B")).is_empty(), "le cooldown global bloque aussi les autres");
+        assert!(
+            e.handle(&m("B")).is_empty(),
+            "le cooldown global bloque aussi les autres"
+        );
         clock.advance_secs(29);
         assert!(e.handle(&m("B")).is_empty());
         clock.advance_secs(1);
@@ -764,8 +964,24 @@ mod tests {
         let mut c = cmd("lurk", "x");
         c.cooldown_secs = 30;
         e.set_commands(vec![c]);
-        assert_eq!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!lurk"))).len(), 1);
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Kick, "garder", "B", "!lurk"))).is_empty());
+        assert_eq!(
+            e.handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "A",
+                "!lurk"
+            )))
+            .len(),
+            1
+        );
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Kick,
+                "garder",
+                "B",
+                "!lurk"
+            )))
+            .is_empty());
     }
 
     #[test]
@@ -777,7 +993,11 @@ mod tests {
         let m = |who| AutoEvent::Message(msg(Platform::Twitch, "garder", who, "!roll"));
         assert_eq!(e.handle(&m("A")).len(), 1);
         assert!(e.handle(&m("A")).is_empty());
-        assert_eq!(e.handle(&m("B")).len(), 1, "un autre utilisateur n'est pas bloqué");
+        assert_eq!(
+            e.handle(&m("B")).len(),
+            1,
+            "un autre utilisateur n'est pas bloqué"
+        );
         clock.advance_secs(10);
         assert_eq!(e.handle(&m("A")).len(), 1);
     }
@@ -789,19 +1009,37 @@ mod tests {
         c.min_role = Role::Moderator;
         c.cooldown_secs = 60;
         e.set_commands(vec![c]);
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "viewer", "!mod"))).is_empty());
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "viewer",
+                "!mod"
+            )))
+            .is_empty());
         let mut m = msg(Platform::Twitch, "garder", "modo", "!mod");
         m.author.is_moderator = true;
-        assert_eq!(e.handle(&AutoEvent::Message(m)).len(), 1, "le refus n'a pas déclenché le cooldown");
+        assert_eq!(
+            e.handle(&AutoEvent::Message(m)).len(),
+            1,
+            "le refus n'a pas déclenché le cooldown"
+        );
     }
 
     #[test]
     fn role_permissions() {
         let (mut e, _) = engine();
-        let cmds = [("sub", Role::Subscriber), ("mod", Role::Moderator), ("bc", Role::Broadcaster)]
-            .into_iter()
-            .map(|(n, r)| ChatCommand { min_role: r, ..cmd(n, "x") })
-            .collect();
+        let cmds = [
+            ("sub", Role::Subscriber),
+            ("mod", Role::Moderator),
+            ("bc", Role::Broadcaster),
+        ]
+        .into_iter()
+        .map(|(n, r)| ChatCommand {
+            min_role: r,
+            ..cmd(n, "x")
+        })
+        .collect();
         e.set_commands(cmds);
         let send = |e: &mut Engine, who: &str, sub: bool, modo: bool, text: &str| {
             let mut m = msg(Platform::Twitch, "garder", who, text);
@@ -812,10 +1050,18 @@ mod tests {
         assert_eq!(send(&mut e, "v", false, false, "!sub"), 0);
         assert_eq!(send(&mut e, "s", true, false, "!sub"), 1);
         assert_eq!(send(&mut e, "s", true, false, "!mod"), 0);
-        assert_eq!(send(&mut e, "m", false, true, "!sub"), 1, "un modérateur passe les commandes abonné");
+        assert_eq!(
+            send(&mut e, "m", false, true, "!sub"),
+            1,
+            "un modérateur passe les commandes abonné"
+        );
         assert_eq!(send(&mut e, "m", false, true, "!mod"), 1);
         assert_eq!(send(&mut e, "m", false, true, "!bc"), 0);
-        assert_eq!(send(&mut e, "Garder", false, false, "!bc"), 1, "le diffuseur est reconnu à son pseudo");
+        assert_eq!(
+            send(&mut e, "Garder", false, false, "!bc"),
+            1,
+            "le diffuseur est reconnu à son pseudo"
+        );
         assert_eq!(send(&mut e, "garder", false, false, "!mod"), 1);
     }
 
@@ -827,22 +1073,53 @@ mod tests {
             is_moderator: false,
             is_subscriber: false,
         };
-        assert_eq!(role_of(&a, Some(&chan(Platform::Kick, "garder"))), Role::Broadcaster);
+        assert_eq!(
+            role_of(&a, Some(&chan(Platform::Kick, "garder"))),
+            Role::Broadcaster
+        );
         assert_eq!(role_of(&a, None), Role::Everyone);
-        assert!(Role::Broadcaster > Role::Moderator && Role::Moderator > Role::Subscriber && Role::Subscriber > Role::Everyone);
+        assert!(
+            Role::Broadcaster > Role::Moderator
+                && Role::Moderator > Role::Subscriber
+                && Role::Subscriber > Role::Everyone
+        );
     }
 
     #[test]
     fn message_rule_contains_is_case_insensitive_and_empty_matches_all() {
         let (mut e, _) = engine();
         e.set_rules(vec![
-            rule("a", Trigger::Message { contains: "Bonjour".into() }, say("coucou {user}")),
-            rule("b", Trigger::Message { contains: "".into() }, say("tout")),
+            rule(
+                "a",
+                Trigger::Message {
+                    contains: "Bonjour".into(),
+                },
+                say("coucou {user}"),
+            ),
+            rule(
+                "b",
+                Trigger::Message {
+                    contains: "".into(),
+                },
+                say("tout"),
+            ),
         ]);
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "Al", "oh BONJOUR à tous")));
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Twitch,
+            "garder",
+            "Al",
+            "oh BONJOUR à tous",
+        )));
         assert_eq!(fx.len(), 2);
-        assert!(matches!(&fx[0], Effect::Send { text, scope: Scope::AllChannels, .. } if text == "coucou Al"));
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "Al", "salut")));
+        assert!(
+            matches!(&fx[0], Effect::Send { text, scope: Scope::AllChannels, .. } if text == "coucou Al")
+        );
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Twitch,
+            "garder",
+            "Al",
+            "salut",
+        )));
         assert_eq!(fx.len(), 1);
     }
 
@@ -854,17 +1131,34 @@ mod tests {
         let mut off = rule("b", Trigger::Follow, say("off"));
         off.enabled = false;
         e.set_rules(vec![r, off]);
-        assert!(e.handle(&stream_event(Platform::Twitch, StreamEventKind::Follow)).is_empty());
-        assert_eq!(e.handle(&stream_event(Platform::Kick, StreamEventKind::Follow)).len(), 1);
+        assert!(e
+            .handle(&stream_event(Platform::Twitch, StreamEventKind::Follow))
+            .is_empty());
+        assert_eq!(
+            e.handle(&stream_event(Platform::Kick, StreamEventKind::Follow))
+                .len(),
+            1
+        );
     }
 
     #[test]
     fn follow_sub_and_raid_triggers() {
         let (mut e, _) = engine();
         e.set_rules(vec![
-            rule("f", Trigger::Follow, Action::SendMessage { target: Target::Source, text: "bienvenue {user}".into() }),
+            rule(
+                "f",
+                Trigger::Follow,
+                Action::SendMessage {
+                    target: Target::Source,
+                    text: "bienvenue {user}".into(),
+                },
+            ),
             rule("s", Trigger::Sub, say("sub {user} {months}")),
-            rule("r", Trigger::Raid { min_viewers: 10 }, say("raid {viewers} de {user}")),
+            rule(
+                "r",
+                Trigger::Raid { min_viewers: 10 },
+                say("raid {viewers} de {user}"),
+            ),
         ]);
         let fx = e.handle(&stream_event(Platform::Twitch, StreamEventKind::Follow));
         assert_eq!(
@@ -875,12 +1169,30 @@ mod tests {
                 origin: "f".into()
             }]
         );
-        let fx = e.handle(&stream_event(Platform::Twitch, StreamEventKind::Sub { months: 3 }));
+        let fx = e.handle(&stream_event(
+            Platform::Twitch,
+            StreamEventKind::Sub { months: 3 },
+        ));
         assert!(matches!(&fx[0], Effect::Send { text, .. } if text == "sub Bob 3"));
-        let fx = e.handle(&stream_event(Platform::Twitch, StreamEventKind::Gift { recipient: None }));
-        assert_eq!(fx.len(), 1, "un don de subs déclenche aussi le déclencheur sub");
-        assert!(e.handle(&stream_event(Platform::Twitch, StreamEventKind::Raid { viewers: 9 })).is_empty());
-        let fx = e.handle(&stream_event(Platform::Twitch, StreamEventKind::Raid { viewers: 10 }));
+        let fx = e.handle(&stream_event(
+            Platform::Twitch,
+            StreamEventKind::Gift { recipient: None },
+        ));
+        assert_eq!(
+            fx.len(),
+            1,
+            "un don de subs déclenche aussi le déclencheur sub"
+        );
+        assert!(e
+            .handle(&stream_event(
+                Platform::Twitch,
+                StreamEventKind::Raid { viewers: 9 }
+            ))
+            .is_empty());
+        let fx = e.handle(&stream_event(
+            Platform::Twitch,
+            StreamEventKind::Raid { viewers: 10 },
+        ));
         assert!(matches!(&fx[0], Effect::Send { text, .. } if text == "raid 10 de Bob"));
     }
 
@@ -901,24 +1213,57 @@ mod tests {
     fn moderation_rules_target_the_author() {
         let (mut e, _) = engine();
         e.set_rules(vec![
-            rule("t", Trigger::Message { contains: "spam".into() }, Action::Timeout { seconds: 600 }),
-            rule("d", Trigger::Message { contains: "spam".into() }, Action::DeleteMessage),
-            rule("b", Trigger::Message { contains: "scam".into() }, Action::Ban { reason: Some("arnaque".into()) }),
+            rule(
+                "t",
+                Trigger::Message {
+                    contains: "spam".into(),
+                },
+                Action::Timeout { seconds: 600 },
+            ),
+            rule(
+                "d",
+                Trigger::Message {
+                    contains: "spam".into(),
+                },
+                Action::DeleteMessage,
+            ),
+            rule(
+                "b",
+                Trigger::Message {
+                    contains: "scam".into(),
+                },
+                Action::Ban {
+                    reason: Some("arnaque".into()),
+                },
+            ),
         ]);
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Kick, "garder", "Troll", "SPAM spam")));
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Kick,
+            "garder",
+            "Troll",
+            "SPAM spam",
+        )));
         assert_eq!(fx.len(), 2);
         assert_eq!(
             fx[0],
             Effect::Moderate {
                 channel_id: "kick:garder".into(),
-                kind: ModerationKind::Timeout { user_id: "id-Troll".into(), seconds: 600 },
+                kind: ModerationKind::Timeout {
+                    user_id: "id-Troll".into(),
+                    seconds: 600
+                },
                 origin: "t".into()
             }
         );
         assert!(
             matches!(&fx[1], Effect::Moderate { kind: ModerationKind::DeleteMessage { message_id }, .. } if message_id == "m1")
         );
-        let fx = e.handle(&AutoEvent::Message(msg(Platform::Kick, "garder", "Troll", "scam")));
+        let fx = e.handle(&AutoEvent::Message(msg(
+            Platform::Kick,
+            "garder",
+            "Troll",
+            "scam",
+        )));
         assert!(
             matches!(&fx[0], Effect::Moderate { kind: ModerationKind::Ban { reason: Some(r), .. }, .. } if r == "arnaque")
         );
@@ -927,13 +1272,35 @@ mod tests {
     #[test]
     fn moderation_rules_spare_moderators_and_broadcaster() {
         let (mut e, _) = engine();
-        e.set_rules(vec![rule("t", Trigger::Message { contains: "http".into() }, Action::Timeout { seconds: 60 })]);
+        e.set_rules(vec![rule(
+            "t",
+            Trigger::Message {
+                contains: "http".into(),
+            },
+            Action::Timeout { seconds: 60 },
+        )]);
         let mut m = msg(Platform::Twitch, "garder", "Modo", "http://x");
         m.author.is_moderator = true;
         assert!(e.handle(&AutoEvent::Message(m)).is_empty());
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "Garder", "http://x"))).is_empty());
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "Garder",
+                "http://x"
+            )))
+            .is_empty());
         assert!(e.is_broadcaster(&msg(Platform::Twitch, "garder", "garder", "x")));
-        assert_eq!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "Viewer", "http://x"))).len(), 1);
+        assert_eq!(
+            e.handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "Viewer",
+                "http://x"
+            )))
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -945,7 +1312,11 @@ mod tests {
         clock.advance_secs(1);
         assert_eq!(
             e.tick(),
-            vec![Effect::Send { scope: Scope::Platforms(vec![Platform::Kick]), text: "x".into(), origin: "t".into() }]
+            vec![Effect::Send {
+                scope: Scope::Platforms(vec![Platform::Kick]),
+                text: "x".into(),
+                origin: "t".into()
+            }]
         );
     }
 
@@ -953,20 +1324,46 @@ mod tests {
     fn command_and_rule_can_both_fire_on_the_same_message() {
         let (mut e, _) = engine();
         e.set_commands(vec![cmd("hi", "hello")]);
-        e.set_rules(vec![rule("a", Trigger::Message { contains: "!hi".into() }, say("log"))]);
-        assert_eq!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "!hi"))).len(), 2);
+        e.set_rules(vec![rule(
+            "a",
+            Trigger::Message {
+                contains: "!hi".into(),
+            },
+            say("log"),
+        )]);
+        assert_eq!(
+            e.handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "A",
+                "!hi"
+            )))
+            .len(),
+            2
+        );
     }
 
     #[test]
     fn timer_fires_after_interval_without_burst() {
         let (mut e, clock) = engine();
-        e.set_rules(vec![rule("t", Trigger::Timer { every_secs: 60 }, say("pense au follow"))]);
+        e.set_rules(vec![rule(
+            "t",
+            Trigger::Timer { every_secs: 60 },
+            say("pense au follow"),
+        )]);
         assert!(e.tick().is_empty(), "pas de déclenchement immédiat");
         clock.advance_secs(59);
         assert!(e.tick().is_empty());
         clock.advance_secs(1);
         let fx = e.tick();
-        assert_eq!(fx, vec![Effect::Send { scope: Scope::AllChannels, text: "pense au follow".into(), origin: "t".into() }]);
+        assert_eq!(
+            fx,
+            vec![Effect::Send {
+                scope: Scope::AllChannels,
+                text: "pense au follow".into(),
+                origin: "t".into()
+            }]
+        );
         assert!(e.tick().is_empty(), "une seule fois par échéance");
         clock.advance_secs(600);
         assert_eq!(e.tick().len(), 1, "pas de rattrapage en rafale");
@@ -981,13 +1378,26 @@ mod tests {
         let mut off = rule("off", Trigger::Timer { every_secs: 1 }, say("x"));
         off.enabled = false;
         e.set_rules(vec![
-            rule("t", Trigger::Timer { every_secs: 1 }, Action::SendMessage { target: Target::Source, text: "tic".into() }),
+            rule(
+                "t",
+                Trigger::Timer { every_secs: 1 },
+                Action::SendMessage {
+                    target: Target::Source,
+                    text: "tic".into(),
+                },
+            ),
             off,
         ]);
         clock.advance_secs(1);
         let fx = e.tick();
         assert_eq!(fx.len(), 1);
-        assert!(matches!(&fx[0], Effect::Send { scope: Scope::AllChannels, .. }));
+        assert!(matches!(
+            &fx[0],
+            Effect::Send {
+                scope: Scope::AllChannels,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -999,9 +1409,16 @@ mod tests {
         clock.advance_secs(10);
         assert_eq!(e.tick().len(), 1, "l'échéance d'origine est conservée");
         clock.advance_secs(30);
-        e.set_rules(vec![rule("t", Trigger::Timer { every_secs: 120 }, say("y"))]);
+        e.set_rules(vec![rule(
+            "t",
+            Trigger::Timer { every_secs: 120 },
+            say("y"),
+        )]);
         clock.advance_secs(60);
-        assert!(e.tick().is_empty(), "intervalle modifié : le minuteur repart de zéro");
+        assert!(
+            e.tick().is_empty(),
+            "intervalle modifié : le minuteur repart de zéro"
+        );
         clock.advance_secs(60);
         assert_eq!(e.tick().len(), 1);
         e.set_rules(vec![]);
@@ -1017,7 +1434,10 @@ mod tests {
             rule("off", Trigger::StreamEnd, say("off")),
         ]);
         let p = Platform::Twitch;
-        assert!(e.observe_live("twitch:garder", &p, true).is_empty(), "déjà en live au lancement de l'app");
+        assert!(
+            e.observe_live("twitch:garder", &p, true).is_empty(),
+            "déjà en live au lancement de l'app"
+        );
         assert!(e.observe_live("twitch:garder", &p, true).is_empty());
         let fx = e.observe_live("twitch:garder", &p, false);
         assert!(matches!(&fx[0], Effect::Send { text, .. } if text == "off"));
@@ -1025,25 +1445,57 @@ mod tests {
         let fx = e.observe_live("twitch:garder", &p, true);
         assert!(matches!(&fx[0], Effect::Send { text, .. } if text == "on twitch"));
         // Une autre chaîne a son propre état.
-        assert!(e.observe_live("kick:garder", &Platform::Kick, false).is_empty());
-        assert_eq!(e.observe_live("kick:garder", &Platform::Kick, true).len(), 1);
+        assert!(e
+            .observe_live("kick:garder", &Platform::Kick, false)
+            .is_empty());
+        assert_eq!(
+            e.observe_live("kick:garder", &Platform::Kick, true).len(),
+            1
+        );
     }
 
     #[test]
     fn rules_do_not_cross_trigger_kinds() {
         let (mut e, _) = engine();
-        e.set_rules(vec![rule("f", Trigger::Follow, say("x")), rule("on", Trigger::StreamStart, say("y"))]);
-        assert!(e.handle(&AutoEvent::Message(msg(Platform::Twitch, "garder", "A", "follow"))).is_empty());
-        assert!(e.handle(&stream_event(Platform::Twitch, StreamEventKind::Raid { viewers: 50 })).is_empty());
+        e.set_rules(vec![
+            rule("f", Trigger::Follow, say("x")),
+            rule("on", Trigger::StreamStart, say("y")),
+        ]);
+        assert!(e
+            .handle(&AutoEvent::Message(msg(
+                Platform::Twitch,
+                "garder",
+                "A",
+                "follow"
+            )))
+            .is_empty());
+        assert!(e
+            .handle(&stream_event(
+                Platform::Twitch,
+                StreamEventKind::Raid { viewers: 50 }
+            ))
+            .is_empty());
     }
 
     #[test]
     fn validation() {
         assert!(rule("a", Trigger::Follow, say("x")).validate().is_ok());
         assert!(rule("a", Trigger::Follow, say("  ")).validate().is_err());
-        assert!(rule("a", Trigger::Timer { every_secs: 0 }, say("x")).validate().is_err());
-        assert!(rule("a", Trigger::Follow, Action::Timeout { seconds: 5 }).validate().is_err());
-        assert!(rule("a", Trigger::Message { contains: "".into() }, Action::DeleteMessage).validate().is_ok());
+        assert!(rule("a", Trigger::Timer { every_secs: 0 }, say("x"))
+            .validate()
+            .is_err());
+        assert!(rule("a", Trigger::Follow, Action::Timeout { seconds: 5 })
+            .validate()
+            .is_err());
+        assert!(rule(
+            "a",
+            Trigger::Message {
+                contains: "".into()
+            },
+            Action::DeleteMessage
+        )
+        .validate()
+        .is_ok());
         let mut r = rule("a", Trigger::Follow, say("x"));
         r.name = " ".into();
         assert!(r.validate().is_err());
@@ -1061,7 +1513,12 @@ mod tests {
         let r = rule(
             "a",
             Trigger::Raid { min_viewers: 5 },
-            Action::SendMessage { target: Target::Platforms { platforms: vec![Platform::Kick] }, text: "x".into() },
+            Action::SendMessage {
+                target: Target::Platforms {
+                    platforms: vec![Platform::Kick],
+                },
+                text: "x".into(),
+            },
         );
         let json = serde_json::to_string(&r).unwrap();
         assert_eq!(serde_json::from_str::<Rule>(&json).unwrap(), r);
@@ -1069,6 +1526,12 @@ mod tests {
             r#"{"id":"1","name":"n","enabled":true,"trigger":{"type":"follow"},"action":{"type":"send_message","text":"hi"}}"#,
         )
         .unwrap();
-        assert_eq!(minimal.action, Action::SendMessage { target: Target::Source, text: "hi".into() });
+        assert_eq!(
+            minimal.action,
+            Action::SendMessage {
+                target: Target::Source,
+                text: "hi".into()
+            }
+        );
     }
 }
