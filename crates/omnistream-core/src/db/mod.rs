@@ -180,7 +180,10 @@ impl Database {
     }
 
     pub fn delete_destination(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM stream_destinations WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM stream_destinations WHERE id = ?1", [id])?;
         Ok(())
     }
 

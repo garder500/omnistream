@@ -83,8 +83,19 @@ impl TwitchConnector {
     /// Titre actuel de la chaîne du compte connecté.
     pub async fn channel_title(&self) -> Result<String> {
         let creds = self.inner.auth(false).await?;
-        let v = self.inner.helix(Method::GET, "channels", &[("broadcaster_id", &creds.user_id)], None).await?;
-        Ok(v["data"][0]["title"].as_str().unwrap_or_default().to_string())
+        let v = self
+            .inner
+            .helix(
+                Method::GET,
+                "channels",
+                &[("broadcaster_id", &creds.user_id)],
+                None,
+            )
+            .await?;
+        Ok(v["data"][0]["title"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Met à jour le titre de la chaîne du compte connecté (scope `channel:manage:broadcast`).
