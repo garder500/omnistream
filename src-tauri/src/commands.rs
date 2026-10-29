@@ -56,6 +56,7 @@ pub async fn restore_session(state: &AppState) {
     crate::trovo::restore(state).await;
     crate::youtube::restore(state).await;
     crate::kick::restore(state).await;
+    crate::tiktok::restore(state).await;
     reconnect_channels(state).await;
 }
 
@@ -184,7 +185,7 @@ pub async fn add_channel(
     let platform = Platform::from(platform.as_str());
     if !matches!(
         platform,
-        Platform::Twitch | Platform::Trovo | Platform::Youtube | Platform::Kick
+        Platform::Twitch | Platform::Trovo | Platform::Youtube | Platform::Kick | Platform::Tiktok
     ) {
         return Err(format!("{platform} n'est pas encore pris en charge."));
     }
@@ -200,6 +201,7 @@ pub async fn add_channel(
             || c == '_'
             || (platform == Platform::Youtube && matches!(c, '-' | '.'))
             || (platform == Platform::Kick && c == '-')
+            || (platform == Platform::Tiktok && c == '.')
     };
     if login.is_empty() || !login.chars().all(allowed) {
         return Err("Nom de chaîne invalide.".into());

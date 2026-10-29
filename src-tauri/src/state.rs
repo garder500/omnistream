@@ -6,7 +6,8 @@ use omnistream_core::automation_service::AutomationService;
 use omnistream_core::automod::AutoMod;
 use omnistream_core::bansync::BanSync;
 use omnistream_core::connectors::{
-    ChatEvent, ConnectorRegistry, KickConnector, TrovoConnector, TwitchConnector, YoutubeConnector,
+    ChatEvent, ConnectorRegistry, KickConnector, TiktokConnector, TrovoConnector, TwitchConnector,
+    YoutubeConnector,
 };
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub trovo: TrovoConnector,
     pub youtube: YoutubeConnector,
     pub kick: KickConnector,
+    pub tiktok: TiktokConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
     pub automation: Arc<AutomationService>,
@@ -68,11 +70,14 @@ impl AppState {
             }
         }));
 
+        let tiktok = TiktokConnector::new();
+
         let mut connectors = ConnectorRegistry::new();
         connectors.register(Arc::new(twitch.clone()));
         connectors.register(Arc::new(trovo.clone()));
         connectors.register(Arc::new(youtube.clone()));
         connectors.register(Arc::new(kick.clone()));
+        connectors.register(Arc::new(tiktok.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
         let automation = Arc::new(AutomationService::new(
@@ -93,6 +98,7 @@ impl AppState {
             trovo,
             youtube,
             kick,
+            tiktok,
             moderation: ModerationEngine::new(connectors.clone()),
             bansync: BanSync::new(db.clone(), connectors.clone()),
             connectors,

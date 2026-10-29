@@ -243,6 +243,10 @@ export interface TrovoSettings {
 export type YoutubeSettings = TrovoSettings;
 export type KickSettings = TrovoSettings;
 
+export interface TiktokSettings {
+  has_key: boolean;
+}
+
 // --- Automations ---
 export type Role = "everyone" | "subscriber" | "moderator" | "broadcaster";
 
