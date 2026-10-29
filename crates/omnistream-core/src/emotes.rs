@@ -64,11 +64,20 @@ pub fn parse_twitch_emotes(tag: &str, text: &str, offset: usize) -> Vec<EmoteSpa
     let chars: Vec<char> = text.chars().collect();
     let mut spans = Vec::new();
     for entry in tag.split('/').filter(|e| !e.is_empty()) {
-        let Some((id, ranges)) = entry.split_once(':') else { continue };
+        let Some((id, ranges)) = entry.split_once(':') else {
+            continue;
+        };
         for range in ranges.split(',') {
-            let Some((s, e)) = range.split_once('-') else { continue };
-            let (Ok(s), Ok(e)) = (s.parse::<usize>(), e.parse::<usize>()) else { continue };
-            let (Some(start), Some(end)) = (s.checked_sub(offset), (e + 1).checked_sub(offset)) else { continue };
+            let Some((s, e)) = range.split_once('-') else {
+                continue;
+            };
+            let (Ok(s), Ok(e)) = (s.parse::<usize>(), e.parse::<usize>()) else {
+                continue;
+            };
+            let (Some(start), Some(end)) = (s.checked_sub(offset), (e + 1).checked_sub(offset))
+            else {
+                continue;
+            };
             if start >= end || end > chars.len() {
                 continue;
             }
@@ -91,7 +100,10 @@ pub fn parse_badges(tag: &str) -> Vec<ChatBadge> {
     tag.split(',')
         .filter_map(|b| {
             let (set, ver) = b.split_once('/')?;
-            (!set.is_empty()).then(|| ChatBadge { set_id: set.into(), version: ver.into() })
+            (!set.is_empty()).then(|| ChatBadge {
+                set_id: set.into(),
+                version: ver.into(),
+            })
         })
         .collect()
 }
@@ -115,16 +127,25 @@ fn parse_7tv_emote(e: &Value) -> Option<Emote> {
     let data = e.get("data")?;
     let host = abs_url(data.get("host")?.get("url")?.as_str()?);
     let flags = data.get("flags").and_then(Value::as_u64).unwrap_or(0);
-    Some(Emote { name, url: format!("{host}/2x.webp"), provider: EmoteProvider::SevenTv, zero_width: flags & 256 != 0 })
+    Some(Emote {
+        name,
+        url: format!("{host}/2x.webp"),
+        provider: EmoteProvider::SevenTv,
+        zero_width: flags & 256 != 0,
+    })
 }
 
 fn parse_7tv_list(list: Option<&Value>) -> Vec<Emote> {
-    list.and_then(Value::as_array).map(|a| a.iter().filter_map(parse_7tv_emote).collect()).unwrap_or_default()
+    list.and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(parse_7tv_emote).collect())
+        .unwrap_or_default()
 }
 
 /// `GET https://7tv.io/v3/users/twitch/{id}` -> `emote_set.emotes`.
 pub fn parse_7tv_user(body: &str) -> Result<Vec<Emote>> {
-    Ok(parse_7tv_list(json(body)?.get("emote_set").and_then(|s| s.get("emotes"))))
+    Ok(parse_7tv_list(
+        json(body)?.get("emote_set").and_then(|s| s.get("emotes")),
+    ))
 }
 
 /// `GET https://7tv.io/v3/emote-sets/global` -> `emotes`.
@@ -150,22 +171,52 @@ pub fn parse_bttv(body: &str) -> Result<Vec<Emote>> {
     let lists: Vec<&Value> = if v.is_array() {
         vec![&v]
     } else {
-        ["channelEmotes", "sharedEmotes"].iter().filter_map(|k| v.get(*k)).collect()
+        ["channelEmotes", "sharedEmotes"]
+            .iter()
+            .filter_map(|k| v.get(*k))
+            .collect()
     };
-    Ok(lists.into_iter().filter_map(Value::as_array).flatten().filter_map(bttv_emote).collect())
+    Ok(lists
+        .into_iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(bttv_emote)
+        .collect())
 }
 
 /// `GET https://api.frankerfacez.com/v1/room/id/{id}` ou `/v1/set/global`: `sets.*.emoticons`.
 pub fn parse_ffz(body: &str) -> Result<Vec<Emote>> {
     let v = json(body)?;
     let mut out = Vec::new();
-    for set in v.get("sets").and_then(Value::as_object).into_iter().flat_map(|m| m.values()) {
-        for e in set.get("emoticons").and_then(Value::as_array).into_iter().flatten() {
-            let (Some(name), Some(urls)) = (e.get("name").and_then(Value::as_str), e.get("urls").and_then(Value::as_object)) else {
+    for set in v
+        .get("sets")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|m| m.values())
+    {
+        for e in set
+            .get("emoticons")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let (Some(name), Some(urls)) = (
+                e.get("name").and_then(Value::as_str),
+                e.get("urls").and_then(Value::as_object),
+            ) else {
                 continue;
             };
-            if let Some(url) = urls.get("2").or_else(|| urls.get("1")).and_then(Value::as_str) {
-                out.push(Emote { name: name.into(), url: abs_url(url), provider: EmoteProvider::Ffz, zero_width: false });
+            if let Some(url) = urls
+                .get("2")
+                .or_else(|| urls.get("1"))
+                .and_then(Value::as_str)
+            {
+                out.push(Emote {
+                    name: name.into(),
+                    url: abs_url(url),
+                    provider: EmoteProvider::Ffz,
+                    zero_width: false,
+                });
             }
         }
     }
@@ -175,7 +226,11 @@ pub fn parse_ffz(body: &str) -> Result<Vec<Emote>> {
 // ---------- Annotation ----------
 
 /// Repère dans `text` les mots correspondant à une émote du catalogue, hors zones déjà couvertes.
-pub fn find_third_party(text: &str, existing: &[EmoteSpan], emotes: &HashMap<String, Emote>) -> Vec<EmoteSpan> {
+pub fn find_third_party(
+    text: &str,
+    existing: &[EmoteSpan],
+    emotes: &HashMap<String, Emote>,
+) -> Vec<EmoteSpan> {
     let mut out = Vec::new();
     let mut flush = |start: usize, end: usize, word: &str| {
         if existing.iter().any(|s| start < s.end && s.start < end) {
@@ -233,7 +288,10 @@ struct Inner {
 
 impl EmoteCatalog {
     pub fn new(cache_dir: impl Into<PathBuf>) -> Self {
-        let http = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap_or_default();
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
         Self {
             inner: Arc::new(Inner {
                 http,
@@ -249,7 +307,9 @@ impl EmoteCatalog {
     /// (les premiers messages sont alors sans émotes tierces).
     /// À appeler depuis un runtime tokio.
     pub fn annotate(&self, msg: &mut ChatMessage) {
-        let Some(room) = msg.room_id.clone() else { return };
+        let Some(room) = msg.room_id.clone() else {
+            return;
+        };
         self.ensure_loaded(GLOBAL_KEY);
         self.ensure_loaded(&room);
         for key in [room.as_str(), GLOBAL_KEY] {
@@ -264,7 +324,9 @@ impl EmoteCatalog {
 
     /// Lance (une seule fois) le chargement d'un canal (`global` ou identifiant Twitch).
     pub fn ensure_loaded(&self, key: &str) {
-        if self.inner.rooms.lock().unwrap().contains_key(key) || !self.inner.loading.lock().unwrap().insert(key.to_string()) {
+        if self.inner.rooms.lock().unwrap().contains_key(key)
+            || !self.inner.loading.lock().unwrap().insert(key.to_string())
+        {
             return;
         }
         let this = self.clone();
@@ -272,7 +334,11 @@ impl EmoteCatalog {
         tokio::spawn(async move {
             match this.load(&key).await {
                 Some(map) => {
-                    this.inner.rooms.lock().unwrap().insert(key.clone(), Arc::new(map));
+                    this.inner
+                        .rooms
+                        .lock()
+                        .unwrap()
+                        .insert(key.clone(), Arc::new(map));
                 }
                 // Échec réseau sans cache: nouvel essai possible après une minute.
                 None => tokio::time::sleep(Duration::from_secs(60)).await,
@@ -288,7 +354,9 @@ impl EmoteCatalog {
 
     fn read_cache(&self, key: &str, allow_stale: bool) -> Option<Vec<Emote>> {
         let path = self.cache_path(key);
-        let age = SystemTime::now().duration_since(std::fs::metadata(&path).ok()?.modified().ok()?).unwrap_or_default();
+        let age = SystemTime::now()
+            .duration_since(std::fs::metadata(&path).ok()?.modified().ok()?)
+            .unwrap_or_default();
         if !allow_stale && age > CACHE_TTL {
             return None;
         }
@@ -316,7 +384,11 @@ impl EmoteCatalog {
         };
         // Priorité en cas de doublon: 7TV > BTTV > FFZ (le dernier inséré gagne).
         let mut map = HashMap::new();
-        for p in [EmoteProvider::Ffz, EmoteProvider::Bttv, EmoteProvider::SevenTv] {
+        for p in [
+            EmoteProvider::Ffz,
+            EmoteProvider::Bttv,
+            EmoteProvider::SevenTv,
+        ] {
             for e in list.iter().filter(|e| e.provider == p) {
                 map.insert(e.name.clone(), e.clone());
             }
@@ -355,7 +427,14 @@ impl EmoteCatalog {
         let (a, b, c) = tokio::join!(self.get(&u7), self.get(&ub), self.get(&uf));
         let mut out = Vec::new();
         for (body, parse) in [
-            (a?, if global { parse_7tv_set } else { parse_7tv_user } as fn(&str) -> Result<Vec<Emote>>),
+            (
+                a?,
+                if global {
+                    parse_7tv_set
+                } else {
+                    parse_7tv_user
+                } as fn(&str) -> Result<Vec<Emote>>,
+            ),
             (b?, parse_bttv),
             (c?, parse_ffz),
         ] {
@@ -369,7 +448,11 @@ impl EmoteCatalog {
     #[cfg(test)]
     fn insert_for_test(&self, key: &str, emotes: Vec<Emote>) {
         let map = emotes.into_iter().map(|e| (e.name.clone(), e)).collect();
-        self.inner.rooms.lock().unwrap().insert(key.into(), Arc::new(map));
+        self.inner
+            .rooms
+            .lock()
+            .unwrap()
+            .insert(key.into(), Arc::new(map));
     }
 }
 
@@ -406,8 +489,14 @@ mod tests {
         assert_eq!(
             b,
             vec![
-                ChatBadge { set_id: "moderator".into(), version: "1".into() },
-                ChatBadge { set_id: "subscriber".into(), version: "12".into() },
+                ChatBadge {
+                    set_id: "moderator".into(),
+                    version: "1".into()
+                },
+                ChatBadge {
+                    set_id: "subscriber".into(),
+                    version: "12".into()
+                },
             ]
         );
     }
@@ -428,7 +517,10 @@ mod tests {
 
     #[test]
     fn seventv_global_set() {
-        let e = parse_7tv_set(r#"{"emotes":[{"name":"Clap","data":{"host":{"url":"//cdn.7tv.app/emote/x"}}}]}"#).unwrap();
+        let e = parse_7tv_set(
+            r#"{"emotes":[{"name":"Clap","data":{"host":{"url":"//cdn.7tv.app/emote/x"}}}]}"#,
+        )
+        .unwrap();
         assert_eq!(e[0].name, "Clap");
     }
 
@@ -438,7 +530,10 @@ mod tests {
         let e = parse_bttv(user).unwrap();
         assert_eq!(e.len(), 2);
         assert_eq!(e[0].url, "https://cdn.betterttv.net/emote/1/2x.webp");
-        assert_eq!(parse_bttv(r#"[{"id":"9","code":"LUL2"}]"#).unwrap()[0].name, "LUL2");
+        assert_eq!(
+            parse_bttv(r#"[{"id":"9","code":"LUL2"}]"#).unwrap()[0].name,
+            "LUL2"
+        );
     }
 
     #[test]
@@ -453,15 +548,23 @@ mod tests {
     }
 
     fn emote(name: &str, p: EmoteProvider) -> Emote {
-        Emote { name: name.into(), url: format!("https://x/{name}"), provider: p, zero_width: false }
+        Emote {
+            name: name.into(),
+            url: format!("https://x/{name}"),
+            provider: p,
+            zero_width: false,
+        }
     }
 
     #[test]
     fn finds_words_but_skips_native_overlap() {
-        let map: HashMap<_, _> = [emote("catJAM", EmoteProvider::Bttv), emote("Kappa", EmoteProvider::SevenTv)]
-            .into_iter()
-            .map(|e| (e.name.clone(), e))
-            .collect();
+        let map: HashMap<_, _> = [
+            emote("catJAM", EmoteProvider::Bttv),
+            emote("Kappa", EmoteProvider::SevenTv),
+        ]
+        .into_iter()
+        .map(|e| (e.name.clone(), e))
+        .collect();
         let native = parse_twitch_emotes("25:13-17", "salut, catJAM Kappa", 0);
         let found = find_third_party("salut, catJAM Kappa", &native, &map);
         assert_eq!(found.len(), 1);
@@ -472,7 +575,8 @@ mod tests {
 
     #[tokio::test]
     async fn annotate_uses_loaded_catalog() {
-        let dir = std::env::temp_dir().join(format!("omnistream-emotes-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("omnistream-emotes-test-{}", std::process::id()));
         let cat = EmoteCatalog::new(&dir);
         cat.insert_for_test("42", vec![emote("catJAM", EmoteProvider::Bttv)]);
         cat.insert_for_test(GLOBAL_KEY, vec![]);
@@ -480,7 +584,12 @@ mod tests {
             id: "1".into(),
             channel_id: "c".into(),
             platform: Platform::Twitch,
-            author: ChatAuthor { external_id: "1".into(), display_name: "a".into(), is_moderator: false, is_subscriber: false },
+            author: ChatAuthor {
+                external_id: "1".into(),
+                display_name: "a".into(),
+                is_moderator: false,
+                is_subscriber: false,
+            },
             text: "yo catJAM".into(),
             timestamp_ms: 0,
             emotes: vec![],
@@ -494,7 +603,8 @@ mod tests {
 
     #[tokio::test]
     async fn disk_cache_roundtrip() {
-        let dir = std::env::temp_dir().join(format!("omnistream-emotes-cache-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("omnistream-emotes-cache-{}", std::process::id()));
         let cat = EmoteCatalog::new(&dir);
         cat.write_cache("77", &[emote("a", EmoteProvider::Ffz)]);
         let map = cat.load("77").await.unwrap();

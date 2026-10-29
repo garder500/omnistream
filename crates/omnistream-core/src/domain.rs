@@ -128,10 +128,20 @@ pub struct StreamInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModerationKind {
-    DeleteMessage { message_id: String },
-    Timeout { user_id: String, seconds: u32 },
-    Ban { user_id: String, reason: Option<String> },
-    Unban { user_id: String },
+    DeleteMessage {
+        message_id: String,
+    },
+    Timeout {
+        user_id: String,
+        seconds: u32,
+    },
+    Ban {
+        user_id: String,
+        reason: Option<String>,
+    },
+    Unban {
+        user_id: String,
+    },
 }
 
 impl ModerationKind {
@@ -167,6 +177,10 @@ pub struct StreamDestination {
 
 impl StreamDestination {
     pub fn full_url(&self) -> String {
-        format!("{}/{}", self.rtmp_url.trim_end_matches('/'), self.stream_key)
+        format!(
+            "{}/{}",
+            self.rtmp_url.trim_end_matches('/'),
+            self.stream_key
+        )
     }
 }

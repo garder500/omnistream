@@ -19,9 +19,16 @@ pub use twitch::{TokenHook, TwitchConnector, TwitchCreds};
 pub enum ChatEvent {
     Message(ChatMessage),
     Event(StreamEvent),
-    MessageDeleted { channel_id: String, message_id: String },
-    Connected { channel_id: String },
-    Disconnected { channel_id: String },
+    MessageDeleted {
+        channel_id: String,
+        message_id: String,
+    },
+    Connected {
+        channel_id: String,
+    },
+    Disconnected {
+        channel_id: String,
+    },
 }
 
 #[async_trait]
