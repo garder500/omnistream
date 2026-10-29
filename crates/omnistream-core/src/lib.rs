@@ -7,7 +7,10 @@ pub mod connectors;
 pub mod db;
 pub mod domain;
 pub mod error;
+pub mod ffmpeg;
+pub mod ingest;
 pub mod moderation;
+pub mod secrets;
 pub mod streaming;
 
 pub use error::{Error, Result};

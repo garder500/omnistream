@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "fetch-ffmpeg": "bun scripts/fetch-ffmpeg.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

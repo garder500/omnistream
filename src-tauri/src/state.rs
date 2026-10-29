@@ -4,15 +4,16 @@ use std::sync::Arc;
 use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
-use omnistream_core::streaming::{StreamManager, DEFAULT_INGEST_URL};
-use tokio::sync::{mpsc, Mutex};
+use omnistream_core::secrets::KeyringStore;
+use omnistream_core::streaming::StreamService;
+use tokio::sync::mpsc;
 
 pub struct AppState {
     pub db: Arc<Database>,
     pub twitch: TwitchConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
-    pub streams: Mutex<StreamManager>,
+    pub streams: StreamService,
     pub chat_tx: mpsc::Sender<ChatEvent>,
 }
 
@@ -31,12 +32,13 @@ impl AppState {
         let mut connectors = ConnectorRegistry::new();
         connectors.register(Arc::new(twitch.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
+        let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
         let state = Self {
             db,
             twitch,
             moderation: ModerationEngine::new(connectors.clone()),
             connectors,
-            streams: Mutex::new(StreamManager::new("ffmpeg", DEFAULT_INGEST_URL)),
+            streams,
             chat_tx,
         };
         Ok((state, chat_rx))

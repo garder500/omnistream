@@ -5,7 +5,11 @@ import type {
   DeviceCode,
   ModerationKind,
   Settings,
+  DestinationInput,
+  FfmpegStatus,
   StreamDestination,
+  StreamingState,
+  TitleResult,
   StreamInfo,
 } from "./types";
 
@@ -24,8 +28,14 @@ export const api = {
   moderate: (channelId: string, kind: ModerationKind) => invoke<void>("moderate", { channelId, kind }),
   streamInfos: () => invoke<StreamInfo[]>("stream_infos"),
 
+  streamingState: () => invoke<StreamingState>("streaming_state"),
   listDestinations: () => invoke<StreamDestination[]>("list_destinations"),
-  saveDestination: (destination: StreamDestination) => invoke<void>("save_destination", { destination }),
-  startDestination: (id: string) => invoke<void>("start_destination", { id }),
-  stopDestination: (id: string) => invoke<void>("stop_destination", { id }),
+  saveDestination: (destination: DestinationInput) => invoke<StreamDestination>("save_destination", { destination }),
+  deleteDestination: (id: string) => invoke<void>("delete_destination", { id }),
+  goLive: () => invoke<void>("go_live"),
+  stopLive: () => invoke<void>("stop_live"),
+  setIngestPort: (port: number) => invoke<void>("set_ingest_port", { port }),
+  setFfmpegPath: (path: string) => invoke<FfmpegStatus>("set_ffmpeg_path", { path }),
+  setStreamTitle: (title: string) => invoke<TitleResult[]>("set_stream_title", { title }),
+  twitchCurrentTitle: () => invoke<string | null>("twitch_current_title"),
 };
