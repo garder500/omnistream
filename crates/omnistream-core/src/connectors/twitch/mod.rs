@@ -17,7 +17,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::{ChatConnector, ChatEvent};
 use crate::auth::{self, now_secs, TokenSet};
-use crate::domain::{Channel, ModerationAction, ModerationKind, Platform, StreamInfo};
+use crate::domain::{Category, Channel, ModerationAction, ModerationKind, Platform, StreamInfo, StreamInfoUpdate};
 use crate::{Error, Result};
 
 const IRC_URL: &str = "wss://irc-ws.chat.twitch.tv:443";
@@ -258,6 +258,98 @@ impl ChatConnector for TwitchConnector {
             started_at: s["started_at"].as_str().unwrap_or_default().to_string(),
         }))
     }
+
+    async fn update_stream_info(&self, channel: &Channel, update: &StreamInfoUpdate) -> Result<()> {
+        let inner = &self.inner;
+        let me = inner.auth(false).await?;
+        if !channel.external_id.eq_ignore_ascii_case(&me.login) {
+            return Err(Error::Other(format!(
+                "le compte connecté ({}) n'est pas le propriétaire de {}",
+                me.login, channel.display_name
+            )));
+        }
+        let mut body = serde_json::Map::new();
+        if let Some(title) = &update.title {
+            let title = title.trim();
+            if title.is_empty() || title.chars().count() > 140 {
+                return Err(Error::Other("le titre Twitch doit faire entre 1 et 140 caractères".into()));
+            }
+            body.insert("title".into(), json!(title));
+        }
+        if let Some(name) = update.category.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            let found = self.search_categories(name).await?;
+            let cat = pick_category(&found, name).ok_or_else(|| {
+                let hint: Vec<&str> = found.iter().take(3).map(|c| c.name.as_str()).collect();
+                if hint.is_empty() {
+                    Error::Other(format!("catégorie Twitch introuvable : {name}"))
+                } else {
+                    Error::Other(format!("catégorie Twitch introuvable : {name} (essayez : {})", hint.join(", ")))
+                }
+            })?;
+            body.insert("game_id".into(), json!(cat.id));
+        }
+        if let Some(tags) = &update.tags {
+            body.insert("tags".into(), json!(clean_tags(tags)?));
+        }
+        if body.is_empty() {
+            return Ok(());
+        }
+        inner
+            .helix(Method::PATCH, "channels", &[("broadcaster_id", me.user_id.as_str())], Some(Value::Object(body)))
+            .await
+            .map_err(|e| match e {
+                Error::Other(m) if m.contains("403") || m.contains("401") => Error::Other(format!(
+                    "{m} — reconnectez votre compte Twitch pour accorder la permission de modifier la chaîne"
+                )),
+                other => other,
+            })?;
+        Ok(())
+    }
+
+    async fn search_categories(&self, query: &str) -> Result<Vec<Category>> {
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let v = self.inner.helix(Method::GET, "search/categories", &[("query", query.trim()), ("first", "8")], None).await?;
+        Ok(parse_categories(&v))
+    }
+}
+
+/// Valide et normalise les tags Twitch (10 max, 25 caractères alphanumériques, sans espace).
+fn clean_tags(tags: &[String]) -> Result<Vec<String>> {
+    let mut out: Vec<String> = Vec::new();
+    for raw in tags {
+        let tag = raw.trim().trim_start_matches('#');
+        if tag.is_empty() || out.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
+            continue;
+        }
+        if tag.chars().count() > 25 || !tag.chars().all(char::is_alphanumeric) {
+            return Err(Error::Other(format!(
+                "tag Twitch invalide « {tag} » (25 caractères max, lettres et chiffres uniquement)"
+            )));
+        }
+        out.push(tag.to_string());
+    }
+    if out.len() > 10 {
+        return Err(Error::Other("Twitch accepte 10 tags au maximum".into()));
+    }
+    Ok(out)
+}
+
+/// Choisit la catégorie dont le nom correspond exactement (jamais d'approximation : on ne change pas de jeu par erreur).
+fn pick_category<'a>(found: &'a [Category], wanted: &str) -> Option<&'a Category> {
+    found.iter().find(|c| c.name.trim().eq_ignore_ascii_case(wanted.trim()))
+}
+
+fn parse_categories(v: &Value) -> Vec<Category> {
+    v["data"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| Some(Category { id: c["id"].as_str()?.to_string(), name: c["name"].as_str()?.to_string() }))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Maintient la connexion IRC d'une chaîne, avec reconnexion à délai croissant.
@@ -344,5 +436,28 @@ async fn session(
                 ws.send(Message::Text(format!("PRIVMSG #{login} :{text}"))).await.map_err(net)?;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tags_are_validated() {
+        let ok = clean_tags(&["#Français".into(), " chill ".into(), "chill".into(), "".into()]).unwrap();
+        assert_eq!(ok, vec!["Français", "chill"]);
+        assert!(clean_tags(&["a b".into()]).is_err());
+        assert!(clean_tags(&["x".repeat(26)]).is_err());
+        assert!(clean_tags(&(0..11).map(|i| format!("t{i}")).collect::<Vec<_>>()).is_err());
+    }
+
+    #[test]
+    fn category_prefers_exact_match() {
+        let v = json!({"data": [{"id": "1", "name": "Just Chatting 2"}, {"id": "509658", "name": "Just Chatting"}]});
+        let found = parse_categories(&v);
+        assert_eq!(pick_category(&found, "just chatting").unwrap().id, "509658");
+        assert!(pick_category(&found, "Just").is_none());
+        assert!(pick_category(&[], "x").is_none());
     }
 }

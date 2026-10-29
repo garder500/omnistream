@@ -6,12 +6,13 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 use crate::auth::TokenSet;
-use crate::domain::{Account, Channel, Platform, StreamDestination};
+use crate::domain::{Account, Channel, Platform, StreamDestination, StreamPreset};
 use crate::Result;
 
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_tokens.sql"),
+    include_str!("migrations/0140_presets.sql"),
 ];
 
 pub struct Database {
@@ -178,6 +179,38 @@ impl Database {
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
+
+    pub fn save_preset(&self, p: &StreamPreset) -> Result<()> {
+        let tags = serde_json::to_string(&p.tags).map_err(|e| crate::Error::Other(e.to_string()))?;
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO stream_presets (id, name, title, category, tags) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, title = excluded.title,
+               category = excluded.category, tags = excluded.tags",
+            (&p.id, &p.name, &p.title, &p.category, tags),
+        )?;
+        Ok(())
+    }
+
+    pub fn list_presets(&self) -> Result<Vec<StreamPreset>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, name, title, category, tags FROM stream_presets ORDER BY name")?;
+        let rows = stmt.query_map([], |r| {
+            let tags: String = r.get(4)?;
+            Ok(StreamPreset {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                title: r.get(2)?,
+                category: r.get(3)?,
+                tags: serde_json::from_str(&tags).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    pub fn delete_preset(&self, id: &str) -> Result<()> {
+        self.conn.lock().unwrap().execute("DELETE FROM stream_presets WHERE id = ?1", [id])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -234,5 +267,25 @@ mod tests {
         db.set_setting("k", "v").unwrap();
         db.set_setting("k", "w").unwrap();
         assert_eq!(db.get_setting("k").unwrap().as_deref(), Some("w"));
+    }
+
+    #[test]
+    fn roundtrips_presets() {
+        let db = Database::open_in_memory().unwrap();
+        let p = StreamPreset {
+            id: "p1".into(),
+            name: "Just Chatting".into(),
+            title: "On papote".into(),
+            category: "Just Chatting".into(),
+            tags: vec!["Français".into(), "chill".into()],
+        };
+        db.save_preset(&p).unwrap();
+        db.save_preset(&StreamPreset { title: "Autre".into(), ..p.clone() }).unwrap();
+        let list = db.list_presets().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "Autre");
+        assert_eq!(list[0].tags, p.tags);
+        db.delete_preset("p1").unwrap();
+        assert!(db.list_presets().unwrap().is_empty());
     }
 }

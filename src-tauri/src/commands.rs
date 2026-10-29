@@ -1,6 +1,9 @@
 use omnistream_core::auth::twitch::{self as twitch_auth, DeviceCode};
 use omnistream_core::connectors::TwitchCreds;
-use omnistream_core::domain::{Account, Channel, ModerationAction, ModerationKind, Platform, StreamInfo};
+use omnistream_core::domain::{
+    Account, Category, Channel, ModerationAction, ModerationKind, Platform, PlatformUpdateResult, StreamInfo,
+    StreamInfoUpdate, StreamPreset,
+};
 use omnistream_core::ffmpeg::FfmpegStatus;
 use omnistream_core::streaming::{DestinationInput, DestinationView, StreamingState};
 use serde::Serialize;
@@ -279,4 +282,60 @@ pub async fn twitch_current_title(state: State<'_, AppState>) -> CmdResult<Optio
         return Ok(None);
     }
     state.twitch.channel_title().await.map(Some).map_err(err)
+}
+
+/// Applique titre / catégorie / tags aux chaînes choisies (toutes si `channel_ids` est vide) ;
+/// renvoie un statut par chaîne, un échec n'annule pas les autres.
+#[tauri::command]
+pub async fn update_stream_info(
+    state: State<'_, AppState>,
+    channel_ids: Vec<String>,
+    update: StreamInfoUpdate,
+) -> CmdResult<Vec<PlatformUpdateResult>> {
+    if update.is_empty() {
+        return Err("Rien à modifier.".into());
+    }
+    let all = state.db.list_channels().map_err(err)?;
+    let channels: Vec<Channel> = if channel_ids.is_empty() {
+        all
+    } else {
+        all.into_iter().filter(|c| channel_ids.contains(&c.id)).collect()
+    };
+    if channels.is_empty() {
+        return Err("Aucune chaîne sélectionnée.".into());
+    }
+    Ok(state.connectors.update_stream_info(&channels, &update).await)
+}
+
+#[tauri::command]
+pub async fn search_categories(state: State<'_, AppState>, query: String) -> CmdResult<Vec<Category>> {
+    let mut found: Vec<Category> = Vec::new();
+    for platform in state.connectors.platforms() {
+        if let Ok(connector) = state.connectors.get(&platform) {
+            for cat in connector.search_categories(&query).await.unwrap_or_default() {
+                if !found.iter().any(|c| c.name.eq_ignore_ascii_case(&cat.name)) {
+                    found.push(cat);
+                }
+            }
+        }
+    }
+    Ok(found)
+}
+
+#[tauri::command]
+pub fn list_presets(state: State<'_, AppState>) -> CmdResult<Vec<StreamPreset>> {
+    state.db.list_presets().map_err(err)
+}
+
+#[tauri::command]
+pub fn save_preset(state: State<'_, AppState>, preset: StreamPreset) -> CmdResult<()> {
+    if preset.name.trim().is_empty() {
+        return Err("Donnez un nom au préréglage.".into());
+    }
+    state.db.save_preset(&preset).map_err(err)
+}
+
+#[tauri::command]
+pub fn delete_preset(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.db.delete_preset(&id).map_err(err)
 }

@@ -117,6 +117,48 @@ pub struct StreamInfo {
     pub started_at: String,
 }
 
+/// Catégorie (jeu) proposée par la recherche d'une plateforme.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
+}
+
+/// Mise à jour des infos de live ; un champ `None` n'est pas modifié.
+/// La catégorie est donnée par son nom : chaque connecteur la résout à sa manière.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamInfoUpdate {
+    pub title: Option<String>,
+    pub category: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+impl StreamInfoUpdate {
+    pub fn is_empty(&self) -> bool {
+        let blank = |v: &Option<String>| v.as_deref().is_none_or(|s| s.trim().is_empty());
+        blank(&self.title) && blank(&self.category) && self.tags.is_none()
+    }
+}
+
+/// Résultat de la mise à jour pour une chaîne (le succès est partiel par plateforme).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlatformUpdateResult {
+    pub channel_id: String,
+    pub platform: Platform,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+/// Préréglage de titre / catégorie / tags, réutilisable en un clic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamPreset {
+    pub id: String,
+    pub name: String,
+    pub title: String,
+    pub category: String,
+    pub tags: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModerationKind {
