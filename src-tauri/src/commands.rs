@@ -1,8 +1,9 @@
 use omnistream_core::auth::twitch::{self as twitch_auth, DeviceCode};
+use omnistream_core::automod::{validate_rule, Rule, Verdict};
 use omnistream_core::connectors::TwitchCreds;
 use omnistream_core::domain::{
-    Account, Category, Channel, ModerationAction, ModerationKind, Platform, PlatformUpdateResult,
-    StreamInfo, StreamInfoUpdate, StreamPreset,
+    Account, Category, Channel, ChatAuthor, ChatMessage, ModerationAction, ModerationKind,
+    Platform, PlatformUpdateResult, StreamInfo, StreamInfoUpdate, StreamPreset,
 };
 use omnistream_core::ffmpeg::FfmpegStatus;
 use omnistream_core::streaming::{DestinationInput, DestinationView, StreamingState};
@@ -340,6 +341,72 @@ pub async fn twitch_current_title(state: State<'_, AppState>) -> CmdResult<Optio
         return Ok(None);
     }
     state.twitch.channel_title().await.map(Some).map_err(err)
+}
+
+/// Applique les actions d'automod (timeout, suppression) sur la chaîne du message.
+pub async fn apply_automod(app: &AppHandle, msg: &ChatMessage, verdict: &Verdict) {
+    let state = app.state::<AppState>();
+    let Ok(channel) = find_channel(&state, &msg.channel_id) else {
+        return;
+    };
+    for result in state.moderation.apply_verdict(&channel, msg, verdict).await {
+        if let Err(e) = result {
+            eprintln!(
+                "automod: action impossible sur {}: {e}",
+                channel.display_name
+            );
+        }
+    }
+}
+
+fn reload_automod(state: &AppState) -> CmdResult<()> {
+    let rules = state.db.list_automod_rules().map_err(err)?;
+    state.automod.lock().unwrap().set_rules(rules);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_automod_rules(state: State<'_, AppState>) -> CmdResult<Vec<Rule>> {
+    state.db.list_automod_rules().map_err(err)
+}
+
+#[tauri::command]
+pub fn save_automod_rule(state: State<'_, AppState>, rule: Rule) -> CmdResult<()> {
+    validate_rule(&rule).map_err(err)?;
+    state.db.save_automod_rule(&rule).map_err(err)?;
+    reload_automod(&state)
+}
+
+#[tauri::command]
+pub fn delete_automod_rule(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.db.delete_automod_rule(&id).map_err(err)?;
+    reload_automod(&state)
+}
+
+/// Aperçu : quelles règles se déclencheraient sur ce texte (sans effet).
+#[tauri::command]
+pub fn test_automod(
+    state: State<'_, AppState>,
+    text: String,
+    platform: Platform,
+) -> CmdResult<Verdict> {
+    let msg = ChatMessage {
+        id: "test".into(),
+        channel_id: "test".into(),
+        platform,
+        author: ChatAuthor {
+            external_id: "test".into(),
+            display_name: "test".into(),
+            is_moderator: false,
+            is_subscriber: false,
+        },
+        text,
+        timestamp_ms: 0,
+        emotes: vec![],
+        badges: vec![],
+        room_id: None,
+    };
+    Ok(state.automod.lock().unwrap().preview(&msg))
 }
 
 /// Applique titre / catégorie / tags aux chaînes choisies (toutes si `channel_ids` est vide) ;

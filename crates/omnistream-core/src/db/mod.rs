@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 
 use crate::auth::TokenSet;
+use crate::automod::Rule;
 use crate::domain::{Account, Channel, Platform, StreamDestination, StreamPreset};
 use crate::Result;
 
@@ -13,6 +14,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_tokens.sql"),
     include_str!("migrations/0140_presets.sql"),
+    include_str!("migrations/0100_automod.sql"),
 ];
 
 pub struct Database {
@@ -242,11 +244,112 @@ impl Database {
             .execute("DELETE FROM stream_presets WHERE id = ?1", [id])?;
         Ok(())
     }
+
+    pub fn save_automod_rule(&self, r: &Rule) -> Result<()> {
+        let json = |e: serde_json::Error| crate::Error::Other(e.to_string());
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO automod_rules (id, name, enabled, score, kind, action, platforms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, enabled = excluded.enabled,
+               score = excluded.score, kind = excluded.kind, action = excluded.action,
+               platforms = excluded.platforms",
+            (
+                &r.id,
+                &r.name,
+                r.enabled,
+                r.score,
+                serde_json::to_string(&r.kind).map_err(json)?,
+                serde_json::to_string(&r.action).map_err(json)?,
+                serde_json::to_string(&r.platforms).map_err(json)?,
+            ),
+        )?;
+        Ok(())
+    }
+
+    /// Règles d'automod dans l'ordre de création ; une ligne illisible est ignorée.
+    pub fn list_automod_rules(&self) -> Result<Vec<Rule>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, name, enabled, score, kind, action, platforms FROM automod_rules ORDER BY rowid")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, bool>(2)?,
+                r.get::<_, u32>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+            ))
+        })?;
+        let mut rules = Vec::new();
+        for row in rows {
+            let (id, name, enabled, score, kind, action, platforms) = row?;
+            let parsed = (|| {
+                Some(Rule {
+                    id,
+                    name,
+                    enabled,
+                    score,
+                    kind: serde_json::from_str(&kind).ok()?,
+                    action: serde_json::from_str(&action).ok()?,
+                    platforms: serde_json::from_str(&platforms).ok()?,
+                })
+            })();
+            rules.extend(parsed);
+        }
+        Ok(rules)
+    }
+
+    pub fn delete_automod_rule(&self, id: &str) -> Result<()> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM automod_rules WHERE id = ?1", [id])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automod::{RuleAction, RuleKind};
+
+    #[test]
+    fn automod_rules_crud_with_default_seed() {
+        let db = Database::open_in_memory().unwrap();
+        let defaults = db.list_automod_rules().unwrap();
+        assert_eq!(defaults.len(), 4);
+        assert!(defaults
+            .iter()
+            .all(|r| r.enabled && r.action == RuleAction::Flag));
+        assert!(defaults
+            .iter()
+            .all(|r| crate::automod::validate_rule(r).is_ok()));
+
+        let rule = Rule {
+            id: "r1".into(),
+            name: "Mots".into(),
+            enabled: true,
+            score: 50,
+            kind: RuleKind::BannedWords {
+                words: vec!["nul".into()],
+            },
+            action: RuleAction::Timeout { seconds: 120 },
+            platforms: vec![Platform::Kick, Platform::Other("x".into())],
+        };
+        db.save_automod_rule(&rule).unwrap();
+        let mut edited = rule.clone();
+        edited.enabled = false;
+        edited.name = "Mots 2".into();
+        db.save_automod_rule(&edited).unwrap();
+        let all = db.list_automod_rules().unwrap();
+        assert_eq!(all.len(), 5);
+        assert_eq!(all.last().unwrap(), &edited);
+        db.delete_automod_rule("r1").unwrap();
+        db.delete_automod_rule("default-caps").unwrap();
+        assert_eq!(db.list_automod_rules().unwrap().len(), 3);
+    }
 
     #[test]
     fn roundtrips_destinations_and_accounts() {

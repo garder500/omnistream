@@ -172,6 +172,33 @@ export interface DeviceCode {
   interval: number;
 }
 
+// Automod : miroir de `omnistream-core::automod`.
+export type RuleKind =
+  | { type: "regex"; pattern: string }
+  | { type: "banned_words"; words: string[] }
+  | { type: "links"; allowed_domains: string[] }
+  | { type: "caps"; min_letters: number; ratio_percent: number }
+  | { type: "repeat"; min_words: number; char_run: number }
+  | { type: "cross_platform_spam"; window_secs: number; min_channels: number };
+
+export type RuleAction = { type: "flag" } | { type: "delete" } | { type: "timeout"; seconds: number };
+
+export interface AutomodRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  score: number;
+  kind: RuleKind;
+  action: RuleAction;
+  /** Vide = toutes les plateformes. */
+  platforms: string[];
+}
+
+export interface AutomodVerdict {
+  matches: { rule_id: string; name: string; score: number; action: RuleAction }[];
+  score: number;
+}
+
 export interface Settings {
   twitch_client_id: string | null;
 }
