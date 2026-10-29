@@ -40,31 +40,37 @@ fn show_main(app: &AppHandle) {
 /// - Ctrl/Cmd+Maj+K : ouvrir la palette de commandes
 /// - Ctrl/Cmd+Maj+D : ouvrir / fermer le dock
 pub fn register_shortcuts(app: &AppHandle) {
-    let primary = if cfg!(target_os = "macos") { Modifiers::SUPER } else { Modifiers::CONTROL };
+    let primary = if cfg!(target_os = "macos") {
+        Modifiers::SUPER
+    } else {
+        Modifiers::CONTROL
+    };
     let mods = Modifiers::SHIFT | primary;
     let open = Shortcut::new(Some(mods), Code::KeyO);
     let palette = Shortcut::new(Some(mods), Code::KeyK);
     let dock = Shortcut::new(Some(mods), Code::KeyD);
 
     for (sc, name) in [(open, "ouvrir"), (palette, "palette"), (dock, "dock")] {
-        let res = app.global_shortcut().on_shortcut(sc, move |app, _shortcut, event| {
-            if event.state() != ShortcutState::Pressed {
-                return;
-            }
-            match name {
-                "dock" => {
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = toggle_dock_window(&app);
-                    });
+        let res = app
+            .global_shortcut()
+            .on_shortcut(sc, move |app, _shortcut, event| {
+                if event.state() != ShortcutState::Pressed {
+                    return;
                 }
-                "palette" => {
-                    show_main(app);
-                    let _ = app.emit_to("main", "shortcut://palette", ());
+                match name {
+                    "dock" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = toggle_dock_window(&app);
+                        });
+                    }
+                    "palette" => {
+                        show_main(app);
+                        let _ = app.emit_to("main", "shortcut://palette", ());
+                    }
+                    _ => show_main(app),
                 }
-                _ => show_main(app),
-            }
-        });
+            });
         if let Err(e) = res {
             eprintln!("raccourci global « {name} » indisponible : {e}");
         }

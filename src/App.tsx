@@ -4,28 +4,37 @@ import { CommandPalette, type Command } from "./components/CommandPalette";
 import { Logo } from "./components/Logo";
 import { NavItem } from "./components/ui";
 import Accounts from "./pages/Accounts";
+import Automations from "./pages/Automations";
+import Commands from "./pages/Commands";
 import Dashboard from "./pages/Dashboard";
+import History from "./pages/History";
 import Moderation from "./pages/Moderation";
 import MultiChat from "./pages/MultiChat";
 import StreamManager from "./pages/StreamManager";
 import { api } from "./lib/api";
 import type { Key } from "./lib/i18n";
+import { AiProvider } from "./lib/ai";
 import { flaggedQueue, StoreProvider, useStore } from "./lib/store";
 
-type SectionId = "dashboard" | "chat" | "moderation" | "stream" | "accounts";
+type SectionId = "dashboard" | "chat" | "moderation" | "automations" | "commands" | "stream" | "history" | "accounts";
 
 const SECTIONS: { id: SectionId; labelKey: Key; icon: string; Component: (p: { go: (id: SectionId) => void }) => JSX.Element }[] = [
   { id: "dashboard", labelKey: "nav.dashboard", icon: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z", Component: Dashboard },
   { id: "chat", labelKey: "nav.chat", icon: "M4 5h16v11H9l-5 4z", Component: MultiChat },
   { id: "moderation", labelKey: "nav.moderation", icon: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z", Component: Moderation },
+  { id: "automations", labelKey: "nav.automations", icon: "M13 2L4 14h7l-1 8 9-12h-7z", Component: Automations },
+  { id: "commands", labelKey: "nav.commands", icon: "M4 17l6-6-6-6M12 19h8", Component: Commands },
   { id: "stream", labelKey: "nav.stream", icon: "M12 9a3 3 0 100 6 3 3 0 000-6zM6.3 6.3a8 8 0 000 11.4M17.7 6.3a8 8 0 010 11.4", Component: StreamManager },
+  { id: "history", labelKey: "nav.history", icon: "M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8M3 3v5h5M12 7v5l3 2", Component: History },
   { id: "accounts", labelKey: "nav.accounts", icon: "M12 4a4 4 0 100 8 4 4 0 000-8zM4 21c1-4 4-6 8-6s7 2 8 6", Component: Accounts },
 ];
 
 export default function App() {
   return (
     <StoreProvider>
-      <Shell />
+      <AiProvider>
+        <Shell />
+      </AiProvider>
     </StoreProvider>
   );
 }

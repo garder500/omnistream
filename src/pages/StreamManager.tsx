@@ -24,6 +24,7 @@ const PRESETS: Record<Kind, { label: string; url: string; hint?: string }> = {
   youtube: { label: "YouTube", url: "rtmp://a.rtmp.youtube.com/live2" },
   kick: { label: "Kick", url: "", hint: "Serveur et clé sont dans le tableau de bord Kick (Paramètres du stream)." },
   tiktok: { label: "TikTok", url: "", hint: "TikTok exige un compte éligible : serveur et clé se copient depuis TikTok Live Studio." },
+  trovo: { label: "Trovo", url: "rtmp://livepush.trovo.live/live", hint: "La clé de stream se trouve dans le tableau de bord Trovo (Stream setup)." },
   custom: { label: "RTMP personnalisé", url: "" },
 };
 

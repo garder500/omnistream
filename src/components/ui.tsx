@@ -1,8 +1,12 @@
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { PLATFORMS, PlatformBadge, type PlatformKey } from "../lib/platforms";
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-card border border-line bg-panel ${className}`}>{children}</div>;
+export function Card({ children, className = "", title }: { children: ReactNode; className?: string; title?: string }) {
+  return (
+    <div title={title} className={`rounded-card border border-line bg-panel ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 type Variant = "primary" | "neutral" | "outline" | "dashed" | "danger" | "warn" | "ghost";

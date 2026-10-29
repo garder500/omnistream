@@ -3,10 +3,33 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api } from "./api";
 import { loadPrefs, savePrefs, translate, type Lang, type Prefs, type TFn } from "./i18n";
 import { systemNotify } from "./notify";
+import { platformKey, type PlatformKey } from "./platforms";
 import type { Account, Channel, ChatMessage, ModerationKind, StreamEvent, StreamInfo } from "./types";
+import type { ChatterOverlap } from "./viewers";
 
 const MAX_MESSAGES = 500;
-const MAX_EVENTS = 50;
+const MAX_EVENTS = 200;
+const MAX_CHATTERS = 20_000;
+
+/** Retient sur quelles plateformes un pseudo a parlé (base de l'estimation de doublons). */
+function trackChatter(map: Map<string, Set<PlatformKey>>, name: string, platform: PlatformKey) {
+  const key = name.trim().toLowerCase();
+  if (!key) return;
+  if (map.size >= MAX_CHATTERS && !map.has(key)) {
+    // Évince le plus ancien (ordre d'insertion) plutôt que de tout perdre.
+    const oldest = map.keys().next();
+    if (!oldest.done) map.delete(oldest.value);
+  }
+  const seen = map.get(key);
+  if (seen) seen.add(platform);
+  else map.set(key, new Set([platform]));
+}
+
+function chatterOverlap(map: Map<string, Set<PlatformKey>>): ChatterOverlap {
+  let shared = 0;
+  for (const platforms of map.values()) if (platforms.size > 1) shared++;
+  return { chatters: map.size, shared };
+}
 
 export interface StoredMessage extends ChatMessage {
   flag: string | null;
@@ -29,6 +52,8 @@ interface Store {
   events: StreamEvent[];
   infos: StreamInfo[];
   msgPerMin: number;
+  /** Chatteurs vus depuis le lancement, et part de ceux présents sur plusieurs plateformes. */
+  overlap: ChatterOverlap;
   toasts: Toast[];
   modLog: string[];
   /** Préférences d'interface (langue, contraste, notifications), persistées localement. */
@@ -65,11 +90,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [infos, setInfos] = useState<StreamInfo[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modLog, setModLog] = useState<string[]>([]);
+  const [overlap, setOverlap] = useState<ChatterOverlap>({ chatters: 0, shared: 0 });
   const [now, setNow] = useState(() => Date.now());
   const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
   const arrivals = useRef<number[]>([]);
+  const chatters = useRef(new Map<string, Set<PlatformKey>>());
   const toastId = useRef(0);
 
   const notify = useCallback((text: string, error = false) => {
@@ -117,6 +144,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     on<{ message: ChatMessage; flag: string | null }>("chat://message", ({ message, flag }) => {
       arrivals.current.push(Date.now());
+      trackChatter(chatters.current, message.author.display_name, platformKey(message.platform));
       setMessages((ms) => [...ms.slice(-(MAX_MESSAGES - 1)), { ...message, flag }]);
       if (flag && prefsRef.current.notifications) {
         systemNotify(translate(prefsRef.current.lang, "notif.flagged"), message.author.display_name);
@@ -151,6 +179,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const t = setInterval(() => {
       const cutoff = Date.now() - 60_000;
       arrivals.current = arrivals.current.filter((a) => a >= cutoff);
+      setOverlap(chatterOverlap(chatters.current));
       setNow(Date.now());
     }, 5000);
     return () => clearInterval(t);
@@ -242,6 +271,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       events,
       infos,
       msgPerMin: arrivals.current.filter((a) => a >= now - 60_000).length,
+      overlap,
       toasts,
       modLog,
       prefs,
@@ -257,7 +287,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dismiss,
       notify,
     }),
-    [accounts, channels, connected, messages, events, infos, now, toasts, modLog, prefs, t, setPrefs, refreshAccounts, refreshChannels, addChannel, removeChannel, send, moderate, dismiss, notify],
+    [accounts, channels, connected, messages, events, infos, now, overlap, toasts, modLog, prefs, t, setPrefs, refreshAccounts, refreshChannels, addChannel, removeChannel, send, moderate, dismiss, notify],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

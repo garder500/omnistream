@@ -1,6 +1,42 @@
 import { PlatformBadge, PLATFORMS, platformKey } from "../lib/platforms";
 import { useStore, type StoredMessage } from "../lib/store";
 import { Badge } from "./ui";
+import type { EmoteSpan } from "../lib/types";
+
+const EXTRA_BADGES: Record<string, string> = {
+  broadcaster: "Streamer",
+  vip: "VIP",
+  founder: "Fondateur",
+  staff: "Staff",
+  partner: "Partenaire",
+};
+
+/** Découpe le texte en fragments texte / émotes (indices en caractères Unicode). */
+function renderText(text: string, emotes: EmoteSpan[] | undefined) {
+  if (!emotes?.length) return text;
+  const chars = Array.from(text);
+  const out: React.ReactNode[] = [];
+  let pos = 0;
+  [...emotes]
+    .sort((a, b) => a.start - b.start)
+    .forEach((e, i) => {
+      if (e.start < pos || e.end > chars.length) return;
+      if (e.start > pos) out.push(chars.slice(pos, e.start).join(""));
+      out.push(
+        <img
+          key={i}
+          src={e.url}
+          alt={e.name}
+          title={e.name}
+          loading="lazy"
+          className={`inline-block h-7 w-auto align-middle ${e.zero_width ? "-ml-6" : "mx-0.5"}`}
+        />,
+      );
+      pos = e.end;
+    });
+  if (pos < chars.length) out.push(chars.slice(pos).join(""));
+  return out;
+}
 
 export function ChatMessage({ message, actions }: { message: StoredMessage; actions?: boolean }) {
   const { moderate, channels, t } = useStore();
@@ -27,7 +63,16 @@ export function ChatMessage({ message, actions }: { message: StoredMessage; acti
             <Badge tone="brand">{t("common.sub")}</Badge>
           </span>
         )}
-        <span className={message.deleted ? "text-muted line-through" : "text-zinc-300"}>{message.text}</span>
+        {message.badges
+          ?.filter((b) => EXTRA_BADGES[b.set_id])
+          .map((b) => (
+            <span key={b.set_id} className="mr-1 align-middle">
+              <Badge>{EXTRA_BADGES[b.set_id]}</Badge>
+            </span>
+          ))}
+        <span className={message.deleted ? "text-muted line-through" : "text-zinc-300"}>
+          {renderText(message.text, message.emotes)}
+        </span>
         {message.deleted && <span className="ml-2 text-xs text-muted">{t("common.deleted")}</span>}
         {actions && !meta.readOnly && !message.deleted && !author.is_moderator && (
           <div className="mt-2 hidden gap-2 group-hover:flex">
