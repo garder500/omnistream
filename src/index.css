@@ -67,3 +67,56 @@ h1, h2, h3 {
   outline: 2px solid var(--color-brand-ring);
   outline-offset: 2px;
 }
+
+/* Focus visible partout, y compris liens et éléments à tabindex */
+:where(a, summary, [tabindex]:not([tabindex="-1"]), [role="option"], [role="tab"]):focus-visible {
+  outline: 2px solid var(--color-brand-ring);
+  outline-offset: 2px;
+}
+
+
+/* Respecte « réduire les animations » du système */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Thème contraste élevé (WCAG AAA) : fond noir pur, textes blancs, bordures
+ * nettes et anneau de focus épais. Activé via <html data-contrast="high">.
+ */
+:root[data-contrast="high"] {
+  --color-ink: #000000;
+  --color-panel: #000000;
+  --color-field: #000000;
+  --color-raised: #1a1a1a;
+  --color-field-hover: #141414;
+  --color-line: #8a8a8a;
+  --color-line-strong: #d4d4d4;
+  --color-muted: #e0e0e0;
+  --color-soft: #ffffff;
+  --color-brand: #5b21b6;
+  --color-brand-hi: #6d28d9;
+  --color-brand-soft: #2e1065;
+  --color-brand-line: #ffffff;
+  --color-brand-ring: #ffe600;
+  --color-success: #5cff8f;
+  --color-warn: #ffe600;
+  --color-warn-soft: #3d3300;
+  --color-danger: #ff7b7b;
+  --color-danger-text: #ffb3b3;
+  --color-danger-line: #ff7b7b;
+  --color-info: #8ff3ff;
+}
+:root[data-contrast="high"] :where(button, input, select, textarea, a, [role="switch"], [role="option"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 3px solid #ffe600;
+  outline-offset: 3px;
+}
+:root[data-contrast="high"] .text-zinc-300,
+:root[data-contrast="high"] .text-zinc-200 {
+  color: #ffffff;
+}

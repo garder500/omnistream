@@ -1,5 +1,6 @@
 mod commands;
 mod state;
+mod ux;
 
 use omnistream_core::connectors::ChatEvent;
 use omnistream_core::moderation::flag_reason;
@@ -48,11 +49,14 @@ async fn forward_streaming_events(app: tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let (state, chat_rx) = AppState::new(dir.join("omnistream.db"))?;
             app.manage(state);
+            ux::register_shortcuts(app.handle());
 
             tauri::async_runtime::spawn(forward_chat_events(app.handle().clone(), chat_rx));
             tauri::async_runtime::spawn(forward_streaming_events(app.handle().clone()));
@@ -65,6 +69,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ux::toggle_dock,
             commands::get_settings,
             commands::set_twitch_client_id,
             commands::list_accounts,

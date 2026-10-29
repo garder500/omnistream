@@ -1,4 +1,4 @@
-import { useEffect, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { PLATFORMS, PlatformBadge, type PlatformKey } from "../lib/platforms";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -164,11 +164,24 @@ export function Badge({ tone = "neutral", children }: { tone?: keyof typeof BADG
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string }[]; value: T; onChange: (id: T) => void }) {
   return (
-    <div role="tablist" className="inline-flex gap-1 rounded-control border border-line bg-field p-1">
+    <div
+      role="tablist"
+      className="inline-flex gap-1 rounded-control border border-line bg-field p-1"
+      onKeyDown={(e) => {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        const tablist = e.currentTarget;
+        const i = tabs.findIndex((x) => x.id === value);
+        const next = tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+        onChange(next.id);
+        requestAnimationFrame(() => (tablist.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus());
+      }}
+    >
       {tabs.map((t) => (
         <button
           key={t.id}
           role="tab"
+          tabIndex={t.id === value ? 0 : -1}
           aria-selected={t.id === value}
           onClick={() => onChange(t.id)}
           className={`min-h-10 rounded-lg px-4 text-sm font-medium transition ${t.id === value ? "bg-brand text-white" : "text-muted hover:text-zinc-100"}`}
@@ -182,16 +195,39 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
 
 export function Modal({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: ReactNode }) {
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  // `onClose` est souvent une fonction en ligne : on la garde en ref pour ne relancer l'effet qu'à l'ouverture.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const previous = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(dialog.current?.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') ?? []).filter((el) => !el.hasAttribute("disabled"));
+    (focusables()[0] ?? dialog.current)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return closeRef.current();
+      if (e.key !== "Tab") return;
+      // Piège à focus : le clavier reste dans la boîte de dialogue.
+      const items = focusables();
+      if (items.length === 0) return e.preventDefault();
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) (e.preventDefault(), last.focus());
+      else if (!e.shiftKey && document.activeElement === last) (e.preventDefault(), first.focus());
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previous?.focus?.();
+    };
+  }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-6" onClick={onClose}>
       <div
+        ref={dialog}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

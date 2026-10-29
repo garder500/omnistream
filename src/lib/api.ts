@@ -26,6 +26,7 @@ export const api = {
   removeChannel: (channelId: string) => invoke<void>("remove_channel", { channelId }),
   sendMessage: (channelIds: string[], text: string) => invoke<void>("send_message", { channelIds, text }),
   moderate: (channelId: string, kind: ModerationKind) => invoke<void>("moderate", { channelId, kind }),
+  toggleDock: () => invoke<boolean>("toggle_dock"),
   streamInfos: () => invoke<StreamInfo[]>("stream_infos"),
 
   streamingState: () => invoke<StreamingState>("streaming_state"),
