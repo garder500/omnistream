@@ -241,6 +241,7 @@ export interface TrovoSettings {
 }
 
 export type YoutubeSettings = TrovoSettings;
+export type KickSettings = TrovoSettings;
 
 // --- Automations ---
 export type Role = "everyone" | "subscriber" | "moderator" | "broadcaster";
