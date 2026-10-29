@@ -15,6 +15,23 @@ export interface Channel {
   display_name: string;
 }
 
+export type EmoteProvider = "twitch" | "seven_tv" | "bttv" | "ffz";
+
+/** Indices en caractères Unicode (fin exclue): utiliser Array.from(text). */
+export interface EmoteSpan {
+  start: number;
+  end: number;
+  name: string;
+  url: string;
+  provider: EmoteProvider;
+  zero_width?: boolean;
+}
+
+export interface ChatBadge {
+  set_id: string;
+  version: string;
+}
+
 export interface ChatMessage {
   id: string;
   channel_id: string;
@@ -27,6 +44,8 @@ export interface ChatMessage {
   };
   text: string;
   timestamp_ms: number;
+  emotes?: EmoteSpan[];
+  badges?: ChatBadge[];
 }
 
 export type ModerationKind =
@@ -154,12 +173,65 @@ export interface StreamInfo {
   started_at: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+}
+
+export interface StreamInfoUpdate {
+  title?: string | null;
+  category?: string | null;
+  tags?: string[] | null;
+}
+
+export interface PlatformUpdateResult {
+  channel_id: string;
+  platform: Platform;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface StreamPreset {
+  id: string;
+  name: string;
+  title: string;
+  category: string;
+  tags: string[];
+}
+
 export interface DeviceCode {
   device_code: string;
   user_code: string;
   verification_uri: string;
   expires_in: number;
   interval: number;
+}
+
+// Automod : miroir de `omnistream-core::automod`.
+export type RuleKind =
+  | { type: "regex"; pattern: string }
+  | { type: "banned_words"; words: string[] }
+  | { type: "links"; allowed_domains: string[] }
+  | { type: "caps"; min_letters: number; ratio_percent: number }
+  | { type: "repeat"; min_words: number; char_run: number }
+  | { type: "cross_platform_spam"; window_secs: number; min_channels: number };
+
+export type RuleAction = { type: "flag" } | { type: "delete" } | { type: "timeout"; seconds: number };
+
+export interface AutomodRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  score: number;
+  kind: RuleKind;
+  action: RuleAction;
+  /** Vide = toutes les plateformes. */
+  platforms: string[];
+}
+
+export interface AutomodVerdict {
+  matches: { rule_id: string; name: string; score: number; action: RuleAction }[];
+  score: number;
 }
 
 export interface Settings {

@@ -95,7 +95,11 @@ pub async fn start_device_flow(http: &reqwest::Client, client_id: &str) -> Resul
 }
 
 /// Attend que l'utilisateur ait validé le code, puis renvoie les jetons.
-pub async fn poll_device_flow(http: &reqwest::Client, client_id: &str, code: &DeviceCode) -> Result<TokenSet> {
+pub async fn poll_device_flow(
+    http: &reqwest::Client,
+    client_id: &str,
+    code: &DeviceCode,
+) -> Result<TokenSet> {
     let mut interval = code.interval.max(1);
     let deadline = now_secs() + code.expires_in as i64;
     while now_secs() < deadline {
@@ -116,13 +120,21 @@ pub async fn poll_device_flow(http: &reqwest::Client, client_id: &str, code: &De
             PollOutcome::Tokens(t) => return Ok(t),
             PollOutcome::Pending => {}
             PollOutcome::SlowDown => interval += 5,
-            PollOutcome::Failed(msg) => return Err(Error::Other(format!("connexion Twitch échouée: {msg}"))),
+            PollOutcome::Failed(msg) => {
+                return Err(Error::Other(format!("connexion Twitch échouée: {msg}")))
+            }
         }
     }
-    Err(Error::Other("le code Twitch a expiré, relancez la connexion".into()))
+    Err(Error::Other(
+        "le code Twitch a expiré, relancez la connexion".into(),
+    ))
 }
 
-pub async fn refresh(http: &reqwest::Client, client_id: &str, refresh_token: &str) -> Result<TokenSet> {
+pub async fn refresh(
+    http: &reqwest::Client,
+    client_id: &str,
+    refresh_token: &str,
+) -> Result<TokenSet> {
     let resp = http
         .post(TOKEN_URL)
         .form(&[
@@ -136,12 +148,18 @@ pub async fn refresh(http: &reqwest::Client, client_id: &str, refresh_token: &st
     let body = resp.text().await?;
     match classify_poll(status, &body) {
         PollOutcome::Tokens(t) => Ok(t),
-        PollOutcome::Failed(msg) => Err(Error::Other(format!("renouvellement du jeton Twitch échoué: {msg}"))),
+        PollOutcome::Failed(msg) => Err(Error::Other(format!(
+            "renouvellement du jeton Twitch échoué: {msg}"
+        ))),
         _ => Err(Error::Other("renouvellement du jeton Twitch échoué".into())),
     }
 }
 
-pub async fn fetch_user(http: &reqwest::Client, client_id: &str, access_token: &str) -> Result<TwitchUser> {
+pub async fn fetch_user(
+    http: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+) -> Result<TwitchUser> {
     let resp = http
         .get(USERS_URL)
         .header("Client-Id", client_id)
@@ -150,7 +168,8 @@ pub async fn fetch_user(http: &reqwest::Client, client_id: &str, access_token: &
         .await?
         .error_for_status()?;
     let v: serde_json::Value = resp.json().await?;
-    serde_json::from_value(v["data"][0].clone()).map_err(|_| Error::Other("profil Twitch introuvable".into()))
+    serde_json::from_value(v["data"][0].clone())
+        .map_err(|_| Error::Other("profil Twitch introuvable".into()))
 }
 
 #[cfg(test)]
@@ -159,10 +178,21 @@ mod tests {
 
     #[test]
     fn classifies_device_flow_responses() {
-        assert!(matches!(classify_poll(400, r#"{"status":400,"message":"authorization_pending"}"#), PollOutcome::Pending));
-        assert!(matches!(classify_poll(400, r#"{"message":"slow_down"}"#), PollOutcome::SlowDown));
-        assert!(matches!(classify_poll(400, r#"{"message":"access_denied"}"#), PollOutcome::Failed(m) if m == "access_denied"));
-        match classify_poll(200, r#"{"access_token":"a","refresh_token":"r","expires_in":3600}"#) {
+        assert!(matches!(
+            classify_poll(400, r#"{"status":400,"message":"authorization_pending"}"#),
+            PollOutcome::Pending
+        ));
+        assert!(matches!(
+            classify_poll(400, r#"{"message":"slow_down"}"#),
+            PollOutcome::SlowDown
+        ));
+        assert!(
+            matches!(classify_poll(400, r#"{"message":"access_denied"}"#), PollOutcome::Failed(m) if m == "access_denied")
+        );
+        match classify_poll(
+            200,
+            r#"{"access_token":"a","refresh_token":"r","expires_in":3600}"#,
+        ) {
             PollOutcome::Tokens(t) => {
                 assert_eq!(t.access_token, "a");
                 assert_eq!(t.refresh_token.as_deref(), Some("r"));

@@ -2,35 +2,59 @@ mod commands;
 mod state;
 
 use omnistream_core::connectors::ChatEvent;
-use omnistream_core::moderation::flag_reason;
+use omnistream_core::emotes::EmoteCatalog;
 use serde_json::json;
 use tauri::{Emitter, Manager};
 
 use state::AppState;
 
 /// Relaie les événements des connecteurs vers l'interface.
-async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::Receiver<ChatEvent>) {
+async fn forward_chat_events(
+    app: tauri::AppHandle,
+    mut rx: tokio::sync::mpsc::Receiver<ChatEvent>,
+    emotes: EmoteCatalog,
+) {
     while let Some(event) = rx.recv().await {
         let _ = match event {
-            ChatEvent::Message(m) => {
-                let flag = flag_reason(&m.text);
-                app.emit("chat://message", json!({ "message": m, "flag": flag }))
+            ChatEvent::Message(mut m) => {
+                emotes.annotate(&mut m);
+                let verdict = app.state::<AppState>().automod.lock().unwrap().evaluate(&m);
+                if !verdict.moderation_kinds(&m).is_empty() {
+                    let (handle, msg, v) = (app.clone(), m.clone(), verdict.clone());
+                    tauri::async_runtime::spawn(async move {
+                        commands::apply_automod(&handle, &msg, &v).await
+                    });
+                }
+                app.emit(
+                    "chat://message",
+                    json!({ "message": m, "flag": verdict.reason(), "score": verdict.score }),
+                )
             }
             ChatEvent::Event(e) => {
-                if let Err(err) = app.state::<AppState>().db.record_event(&e, commands::now_ms()) {
+                if let Err(err) = app
+                    .state::<AppState>()
+                    .db
+                    .record_event(&e, commands::now_ms())
+                {
                     eprintln!("historique des événements: {err}");
                 }
                 app.emit("chat://event", e)
             }
-            ChatEvent::MessageDeleted { channel_id, message_id } => {
-                app.emit("chat://deleted", json!({ "channel_id": channel_id, "message_id": message_id }))
-            }
-            ChatEvent::Connected { channel_id } => {
-                app.emit("chat://status", json!({ "channel_id": channel_id, "connected": true }))
-            }
-            ChatEvent::Disconnected { channel_id } => {
-                app.emit("chat://status", json!({ "channel_id": channel_id, "connected": false }))
-            }
+            ChatEvent::MessageDeleted {
+                channel_id,
+                message_id,
+            } => app.emit(
+                "chat://deleted",
+                json!({ "channel_id": channel_id, "message_id": message_id }),
+            ),
+            ChatEvent::Connected { channel_id } => app.emit(
+                "chat://status",
+                json!({ "channel_id": channel_id, "connected": true }),
+            ),
+            ChatEvent::Disconnected { channel_id } => app.emit(
+                "chat://status",
+                json!({ "channel_id": channel_id, "connected": false }),
+            ),
         };
     }
 }
@@ -51,15 +75,18 @@ async fn forward_streaming_events(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let (state, chat_rx) = AppState::new(dir.join("omnistream.db"))?;
             app.manage(state);
 
-            tauri::async_runtime::spawn(forward_chat_events(app.handle().clone(), chat_rx));
+            let emotes = EmoteCatalog::new(dir.join("emotes"));
+            tauri::async_runtime::spawn(forward_chat_events(app.handle().clone(), chat_rx, emotes));
             tauri::async_runtime::spawn(forward_streaming_events(app.handle().clone()));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -80,6 +107,10 @@ pub fn run() {
             commands::remove_channel,
             commands::send_message,
             commands::moderate,
+            commands::list_automod_rules,
+            commands::save_automod_rule,
+            commands::delete_automod_rule,
+            commands::test_automod,
             commands::stream_infos,
             commands::list_sessions,
             commands::session_detail,
@@ -95,6 +126,11 @@ pub fn run() {
             commands::set_ffmpeg_path,
             commands::set_stream_title,
             commands::twitch_current_title,
+            commands::update_stream_info,
+            commands::search_categories,
+            commands::list_presets,
+            commands::save_preset,
+            commands::delete_preset,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Omnistream");

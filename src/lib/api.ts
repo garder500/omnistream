@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  AutomodRule,
+  AutomodVerdict,
   Channel,
   DeviceCode,
   ModerationKind,
@@ -9,10 +11,14 @@ import type {
   Settings,
   DestinationInput,
   FfmpegStatus,
+  Category,
+  PlatformUpdateResult,
   StreamDestination,
   StreamingState,
   TitleResult,
   StreamInfo,
+  StreamInfoUpdate,
+  StreamPreset,
 } from "./types";
 
 export const api = {
@@ -28,6 +34,10 @@ export const api = {
   removeChannel: (channelId: string) => invoke<void>("remove_channel", { channelId }),
   sendMessage: (channelIds: string[], text: string) => invoke<void>("send_message", { channelIds, text }),
   moderate: (channelId: string, kind: ModerationKind) => invoke<void>("moderate", { channelId, kind }),
+  listAutomodRules: () => invoke<AutomodRule[]>("list_automod_rules"),
+  saveAutomodRule: (rule: AutomodRule) => invoke<void>("save_automod_rule", { rule }),
+  deleteAutomodRule: (id: string) => invoke<void>("delete_automod_rule", { id }),
+  testAutomod: (text: string, platform: string) => invoke<AutomodVerdict>("test_automod", { text, platform }),
   streamInfos: () => invoke<StreamInfo[]>("stream_infos"),
 
   streamingState: () => invoke<StreamingState>("streaming_state"),
@@ -47,4 +57,11 @@ export const api = {
   setFfmpegPath: (path: string) => invoke<FfmpegStatus>("set_ffmpeg_path", { path }),
   setStreamTitle: (title: string) => invoke<TitleResult[]>("set_stream_title", { title }),
   twitchCurrentTitle: () => invoke<string | null>("twitch_current_title"),
+
+  updateStreamInfo: (channelIds: string[], update: StreamInfoUpdate) =>
+    invoke<PlatformUpdateResult[]>("update_stream_info", { channelIds, update }),
+  searchCategories: (query: string) => invoke<Category[]>("search_categories", { query }),
+  listPresets: () => invoke<StreamPreset[]>("list_presets"),
+  savePreset: (preset: StreamPreset) => invoke<void>("save_preset", { preset }),
+  deletePreset: (id: string) => invoke<void>("delete_preset", { id }),
 };

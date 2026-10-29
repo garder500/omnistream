@@ -70,13 +70,17 @@ impl Database {
         if samples.is_empty() {
             if let Some((id, last_live)) = open {
                 if now_ms - last_live >= SESSION_GAP_MS {
-                    tx.execute("UPDATE sessions SET ended_at_ms = ?2 WHERE id = ?1", params![id, last_live])?;
+                    tx.execute(
+                        "UPDATE sessions SET ended_at_ms = ?2 WHERE id = ?1",
+                        params![id, last_live],
+                    )?;
                 }
             }
             return Ok(tx.commit()?);
         }
 
-        if matches!(&open, Some((_, last_live)) if (0..MIN_POLL_INTERVAL_MS).contains(&(now_ms - last_live))) {
+        if matches!(&open, Some((_, last_live)) if (0..MIN_POLL_INTERVAL_MS).contains(&(now_ms - last_live)))
+        {
             return Ok(tx.commit()?);
         }
         let total: i64 = samples.iter().map(|s| i64::from(s.viewers)).sum();
@@ -85,7 +89,10 @@ impl Database {
             Some((id, last_live)) if now_ms - last_live < SESSION_GAP_MS => id,
             stale => {
                 if let Some((id, last_live)) = stale {
-                    tx.execute("UPDATE sessions SET ended_at_ms = ?2 WHERE id = ?1", params![id, last_live])?;
+                    tx.execute(
+                        "UPDATE sessions SET ended_at_ms = ?2 WHERE id = ?1",
+                        params![id, last_live],
+                    )?;
                 }
                 let id = format!("s{now_ms}");
                 tx.execute(
@@ -121,7 +128,11 @@ impl Database {
                 |r| r.get(0),
             )
             .optional()?;
-        let ts = if event.timestamp_ms > 0 { event.timestamp_ms } else { now_ms };
+        let ts = if event.timestamp_ms > 0 {
+            event.timestamp_ms
+        } else {
+            now_ms
+        };
         conn.execute(
             "INSERT OR IGNORE INTO session_events
                (session_id, event_id, channel_id, platform, kind, who, amount, message, payload, timestamp_ms)
@@ -155,23 +166,45 @@ impl Database {
 
         let mut points: BTreeMap<i64, ViewerPoint> = BTreeMap::new();
         let mut stmt = conn.prepare("SELECT ts_ms, platform, viewers FROM viewer_samples WHERE session_id = ?1 ORDER BY ts_ms")?;
-        for row in stmt.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, u32>(2)?)))? {
+        for row in stmt.query_map([id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, u32>(2)?,
+            ))
+        })? {
             let (ts_ms, platform, viewers) = row?;
-            let p = points.entry(ts_ms).or_insert_with(|| ViewerPoint { ts_ms, total: 0, by_platform: BTreeMap::new() });
+            let p = points.entry(ts_ms).or_insert_with(|| ViewerPoint {
+                ts_ms,
+                total: 0,
+                by_platform: BTreeMap::new(),
+            });
             p.total += viewers;
             *p.by_platform.entry(platform).or_insert(0) += viewers;
         }
 
-        let mut stmt = conn.prepare("SELECT payload FROM session_events WHERE session_id = ?1 ORDER BY timestamp_ms, seq")?;
+        let mut stmt = conn.prepare(
+            "SELECT payload FROM session_events WHERE session_id = ?1 ORDER BY timestamp_ms, seq",
+        )?;
         let events = stmt
             .query_map([id], |r| r.get::<_, String>(0))?
-            .filter_map(|p| p.ok().and_then(|p| serde_json::from_str::<StreamEvent>(&p).ok()))
+            .filter_map(|p| {
+                p.ok()
+                    .and_then(|p| serde_json::from_str::<StreamEvent>(&p).ok())
+            })
             .collect();
-        Ok(Some(SessionDetail { summary, points: points.into_values().collect(), events }))
+        Ok(Some(SessionDetail {
+            summary,
+            points: points.into_values().collect(),
+            events,
+        }))
     }
 
     pub fn delete_session(&self, id: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM sessions WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -179,17 +212,41 @@ impl Database {
     /// (`type=viewers`) et par événement (`type=event`), triées par date.
     pub fn export_session_csv(&self, id: &str) -> Result<Option<String>> {
         let conn = self.conn.lock().unwrap();
-        let exists: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)", [id], |r| r.get(0))?;
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+            [id],
+            |r| r.get(0),
+        )?;
         if !exists {
             return Ok(None);
         }
         let mut rows: Vec<(i64, [String; 10])> = Vec::new();
-        let mut stmt = conn.prepare("SELECT ts_ms, platform, channel_id, viewers FROM viewer_samples WHERE session_id = ?1")?;
-        for r in stmt.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?)))? {
+        let mut stmt = conn.prepare(
+            "SELECT ts_ms, platform, channel_id, viewers FROM viewer_samples WHERE session_id = ?1",
+        )?;
+        for r in stmt.query_map([id], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })? {
             let (ts, platform, channel, viewers) = r?;
             rows.push((
                 ts,
-                ["viewers".into(), iso_utc(ts), ts.to_string(), platform, channel, viewers.to_string(), String::new(), String::new(), String::new(), String::new()],
+                [
+                    "viewers".into(),
+                    iso_utc(ts),
+                    ts.to_string(),
+                    platform,
+                    channel,
+                    viewers.to_string(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                ],
             ));
         }
         let mut stmt = conn.prepare(
@@ -209,12 +266,25 @@ impl Database {
             let (ts, platform, channel, kind, who, amount, message) = r?;
             rows.push((
                 ts,
-                ["event".into(), iso_utc(ts), ts.to_string(), platform, channel, String::new(), kind, who, amount.to_string(), message],
+                [
+                    "event".into(),
+                    iso_utc(ts),
+                    ts.to_string(),
+                    platform,
+                    channel,
+                    String::new(),
+                    kind,
+                    who,
+                    amount.to_string(),
+                    message,
+                ],
             ));
         }
         rows.sort_by_key(|(ts, _)| *ts);
 
-        let mut out = String::from("type,date_utc,timestamp_ms,platform,channel,viewers,event,who,amount,message\n");
+        let mut out = String::from(
+            "type,date_utc,timestamp_ms,platform,channel,viewers,event,who,amount,message\n",
+        );
         for (_, r) in rows {
             out.push_str(&r.iter().map(|f| csv_field(f)).collect::<Vec<_>>().join(","));
             out.push('\n');
@@ -244,9 +314,12 @@ fn load_summaries(conn: &Connection, id: Option<&str>, limit: u32) -> Result<Vec
             })
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let mut counts = conn.prepare("SELECT kind, COUNT(*) FROM session_events WHERE session_id = ?1 GROUP BY kind")?;
+    let mut counts = conn
+        .prepare("SELECT kind, COUNT(*) FROM session_events WHERE session_id = ?1 GROUP BY kind")?;
     for s in &mut out {
-        for row in counts.query_map([&s.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?)))? {
+        for row in counts.query_map([&s.id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?))
+        })? {
             let (kind, n) = row?;
             s.event_count += n;
             s.events_by_kind.insert(kind, n);
@@ -282,7 +355,12 @@ fn iso_utc(ms: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
 #[cfg(test)]
@@ -291,7 +369,11 @@ mod tests {
     use crate::domain::StreamEventKind;
 
     fn sample(ch: &str, p: Platform, v: u32) -> ViewerSampleInput {
-        ViewerSampleInput { channel_id: ch.into(), platform: p, viewers: v }
+        ViewerSampleInput {
+            channel_id: ch.into(),
+            platform: p,
+            viewers: v,
+        }
     }
 
     fn event(id: &str, kind: StreamEventKind, who: &str, ts: i64) -> StreamEvent {
@@ -315,8 +397,22 @@ mod tests {
     #[test]
     fn session_opens_samples_and_closes_after_gap() {
         let db = Database::open_in_memory().unwrap();
-        db.record_poll(1_000, &[sample("a", Platform::Twitch, 10), sample("b", Platform::Kick, 5)]).unwrap();
-        db.record_poll(31_000, &[sample("a", Platform::Twitch, 30), sample("b", Platform::Kick, 5)]).unwrap();
+        db.record_poll(
+            1_000,
+            &[
+                sample("a", Platform::Twitch, 10),
+                sample("b", Platform::Kick, 5),
+            ],
+        )
+        .unwrap();
+        db.record_poll(
+            31_000,
+            &[
+                sample("a", Platform::Twitch, 30),
+                sample("b", Platform::Kick, 5),
+            ],
+        )
+        .unwrap();
         // Un sondage vide dans le délai de grâce ne ferme pas la session.
         db.record_poll(61_000, &[]).unwrap();
         assert_eq!(db.list_sessions(10).unwrap()[0].ended_at_ms, None);
@@ -325,7 +421,10 @@ mod tests {
         let sessions = db.list_sessions(10).unwrap();
         assert_eq!(sessions.len(), 1);
         let s = &sessions[0];
-        assert_eq!((s.peak_viewers, s.avg_viewers, s.ended_at_ms), (35, 25, Some(31_000)));
+        assert_eq!(
+            (s.peak_viewers, s.avg_viewers, s.ended_at_ms),
+            (35, 25, Some(31_000))
+        );
 
         let d = db.session_detail(&s.id).unwrap().unwrap();
         assert_eq!(d.points.len(), 2);
@@ -333,15 +432,18 @@ mod tests {
         assert_eq!(d.points[1].by_platform["kick"], 5);
 
         // Un nouveau live après la fermeture ouvre une autre session.
-        db.record_poll(1_000_000, &[sample("a", Platform::Twitch, 1)]).unwrap();
+        db.record_poll(1_000_000, &[sample("a", Platform::Twitch, 1)])
+            .unwrap();
         assert_eq!(db.list_sessions(10).unwrap().len(), 2);
     }
 
     #[test]
     fn close_polls_are_merged() {
         let db = Database::open_in_memory().unwrap();
-        db.record_poll(1_000, &[sample("a", Platform::Twitch, 10)]).unwrap();
-        db.record_poll(2_000, &[sample("a", Platform::Twitch, 99)]).unwrap();
+        db.record_poll(1_000, &[sample("a", Platform::Twitch, 10)])
+            .unwrap();
+        db.record_poll(2_000, &[sample("a", Platform::Twitch, 99)])
+            .unwrap();
         let id = db.list_sessions(1).unwrap()[0].id.clone();
         assert_eq!(db.session_detail(&id).unwrap().unwrap().points.len(), 1);
     }
@@ -349,8 +451,10 @@ mod tests {
     #[test]
     fn stale_open_session_is_closed_when_a_new_live_appears() {
         let db = Database::open_in_memory().unwrap();
-        db.record_poll(1_000, &[sample("a", Platform::Twitch, 10)]).unwrap();
-        db.record_poll(10_000_000, &[sample("a", Platform::Twitch, 4)]).unwrap();
+        db.record_poll(1_000, &[sample("a", Platform::Twitch, 10)])
+            .unwrap();
+        db.record_poll(10_000_000, &[sample("a", Platform::Twitch, 4)])
+            .unwrap();
         let sessions = db.list_sessions(10).unwrap();
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[1].ended_at_ms, Some(1_000));
@@ -368,13 +472,36 @@ mod tests {
         })
         .unwrap();
         // Hors session : conservé mais rattaché à aucune session.
-        db.record_event(&event("e0", StreamEventKind::Follow, "Avant", 500), 500).unwrap();
-        db.record_poll(1_000, &[sample("twitch:garder", Platform::Twitch, 12)]).unwrap();
-        let raid = event("e1", StreamEventKind::Raid { viewers: 85 }, "=cmd(\"x\")", 2_000);
+        db.record_event(&event("e0", StreamEventKind::Follow, "Avant", 500), 500)
+            .unwrap();
+        db.record_poll(1_000, &[sample("twitch:garder", Platform::Twitch, 12)])
+            .unwrap();
+        let raid = event(
+            "e1",
+            StreamEventKind::Raid { viewers: 85 },
+            "=cmd(\"x\")",
+            2_000,
+        );
         db.record_event(&raid, 2_000).unwrap();
         db.record_event(&raid, 2_000).unwrap();
-        db.record_event(&event("", StreamEventKind::Bits { amount: 100 }, "Fan, Jr", 3_000), 3_000).unwrap();
-        db.record_event(&event("", StreamEventKind::Donation { amount_cents: 500, currency: "EUR".into() }, "Don", 0), 4_000).unwrap();
+        db.record_event(
+            &event("", StreamEventKind::Bits { amount: 100 }, "Fan, Jr", 3_000),
+            3_000,
+        )
+        .unwrap();
+        db.record_event(
+            &event(
+                "",
+                StreamEventKind::Donation {
+                    amount_cents: 500,
+                    currency: "EUR".into(),
+                },
+                "Don",
+                0,
+            ),
+            4_000,
+        )
+        .unwrap();
 
         let id = db.list_sessions(1).unwrap()[0].id.clone();
         let d = db.session_detail(&id).unwrap().unwrap();
@@ -397,8 +524,16 @@ mod tests {
 
         // Un raid tardif (après fermeture, dans le délai de grâce) reste dans la session ;
         // un événement bien après n'est rattaché à rien.
-        db.record_event(&event("late", StreamEventKind::Follow, "Tard", 0), 1_000 + SESSION_GAP_MS - 1).unwrap();
-        db.record_event(&event("later", StreamEventKind::Follow, "Très tard", 0), 99_000_000).unwrap();
+        db.record_event(
+            &event("late", StreamEventKind::Follow, "Tard", 0),
+            1_000 + SESSION_GAP_MS - 1,
+        )
+        .unwrap();
+        db.record_event(
+            &event("later", StreamEventKind::Follow, "Très tard", 0),
+            99_000_000,
+        )
+        .unwrap();
         assert_eq!(db.session_detail(&id).unwrap().unwrap().events.len(), 4);
     }
 }

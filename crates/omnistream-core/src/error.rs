@@ -11,6 +11,11 @@ pub enum Error {
         platform: Platform,
         action: &'static str,
     },
+    #[error("{feature} n'est pas pris en charge par {platform}")]
+    Unsupported {
+        platform: Platform,
+        feature: &'static str,
+    },
     #[error("destination de stream inconnue: {0}")]
     UnknownDestination(String),
     #[error("erreur de base de données: {0}")]
