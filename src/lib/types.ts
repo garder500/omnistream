@@ -1,5 +1,5 @@
 // Miroir des types de `omnistream-core::domain`.
-export type Platform = "twitch" | "youtube" | "kick" | { other: string };
+export type Platform = "twitch" | "youtube" | "kick" | "tiktok" | { other: string };
 
 export interface Account {
   id: string;

@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+@theme {
+  --color-ink: #0b0b10;
+  --color-panel: #14141c;
+  --color-line: #232331;
+  --color-muted: #9a9ab0;
+  --color-brand: #7c3aed;
+  --color-twitch: #a970ff;
+  --color-youtube: #ff5c5c;
+  --color-kick: #53fc18;
+  --color-tiktok: #25f4ee;
+}
+
+body {
+  background: var(--color-ink);
+}
