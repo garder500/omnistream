@@ -30,16 +30,16 @@ export default function Moderation() {
         subtitle="Une action, appliquée là où vous le choisissez"
         actions={
           <>
-            <Button className="border border-[#2a2a3a] !bg-panel">Mode lent : désactivé</Button>
-            <Button className="border border-[#2a2a3a] !bg-panel">Abonnés uniquement</Button>
+            <Button variant="outline">Mode lent : désactivé</Button>
+            <Button variant="outline">Abonnés uniquement</Button>
           </>
         }
       />
 
       <div className="flex min-h-0 flex-1 gap-5">
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex gap-1.5 border-b border-[#20202c] p-3.5">
-            <span className="rounded-full bg-[#2b2147] px-3.5 py-1.5 font-semibold text-[#c9a8ff]">À traiter · {queue.length}</span>
+          <div className="flex gap-1.5 border-b border-line p-3.5">
+            <span className="rounded-full bg-brand-soft px-3.5 py-1.5 font-semibold text-[#c9a8ff]">À traiter · {queue.length}</span>
             <span className="px-3.5 py-1.5 text-muted">Traités · {27 + log.length}</span>
             <span className="px-3.5 py-1.5 text-muted">Bannis · 9</span>
           </div>
@@ -50,23 +50,23 @@ export default function Moderation() {
                 key={m.id}
                 onClick={() => setSelectedId(m.id)}
                 aria-pressed={m.id === selected?.id}
-                className={`rounded-xl border p-3.5 text-left ${m.id === selected?.id ? "border-[#5b3fb0] bg-[#1b1b28]" : "border-line bg-panel hover:bg-[#1a1a24]"}`}
+                className={`rounded-control border p-4 text-left ${m.id === selected?.id ? "border-brand-line bg-raised" : "border-line bg-panel hover:bg-raised"}`}
               >
                 <div className="flex items-center gap-2.5">
                   <PlatformBadge platform={m.platform} />
                   <b>{m.author}</b>
                   <span className="text-muted">· il y a {m.age}</span>
-                  <span className="ml-auto rounded-md bg-[#3a2d12] px-2 py-0.5 text-xs font-semibold text-amber-300">{m.reason}</span>
+                  <span className="ml-auto rounded-md bg-warn-soft px-2 py-0.5 text-xs font-semibold text-warn">{m.reason}</span>
                 </div>
                 <div className="mt-2 text-zinc-300">{m.text}</div>
               </button>
             ))}
           </div>
-          <div className="mt-auto border-t border-[#20202c] px-4.5 py-3.5">
+          <div className="mt-auto border-t border-line px-4.5 py-3.5">
             <div className="mb-2 font-semibold">Journal des actions</div>
             {log.length === 0 && <div className="text-muted">Aucune action pour l'instant.</div>}
             {log.map((l, i) => (
-              <div key={i} className="py-1 text-[#b4b4c7]">
+              <div key={i} className="py-1 text-soft">
                 {l}
               </div>
             ))}
@@ -77,7 +77,7 @@ export default function Moderation() {
           {selected ? (
             <>
               <div className="flex items-center gap-3.5">
-                <div className="flex h-13 w-13 items-center justify-center rounded-full bg-[#2a2a3a] text-xl font-bold">
+                <div className="flex h-13 w-13 items-center justify-center rounded-full bg-raised text-xl font-bold">
                   {selected.author[0].toUpperCase()}
                 </div>
                 <div>
@@ -85,7 +85,7 @@ export default function Moderation() {
                   <div className="text-muted">Signalé : {selected.reason.toLowerCase()}</div>
                 </div>
               </div>
-              <div className="rounded-xl bg-ink p-3 leading-relaxed text-[#b4b4c7]">« {selected.text} »</div>
+              <div className="rounded-control bg-ink p-3 leading-relaxed text-soft">« {selected.text} »</div>
               <div className="flex flex-col gap-3">
                 <PlatformChipGroup legend="Appliquer à" platforms={ACTIONABLE} selected={targets} onToggle={toggle} />
                 <p className="text-xs text-muted">TikTok : lecture seule, pas de modération possible.</p>

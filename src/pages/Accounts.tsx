@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, Input, PageHeader } from "../components/ui";
+import { Avatar, Badge, Button, Card, Input, PageHeader } from "../components/ui";
 import { PlatformBadge, PLATFORMS, type PlatformKey } from "../lib/platforms";
 
 type Status = "connected" | "expired" | "readonly";
@@ -18,10 +18,10 @@ const ACCOUNTS: AccountCard[] = [
   { platform: "tiktok", handle: "", status: "readonly", capabilities: ["Chat et événements en lecture seule", "Pas d'OAuth : il suffit de saisir votre pseudo", "Diffusion via la clé de stream de Live Studio"] },
 ];
 
-const BADGE: Record<Status, { text: string; cls: string }> = {
-  connected: { text: "Connecté", cls: "bg-[#10301d] text-green-400" },
-  expired: { text: "Reconnexion requise", cls: "bg-[#3a2d12] text-amber-300" },
-  readonly: { text: "Lecture seule", cls: "bg-[#12303a] text-cyan-300" },
+const BADGE: Record<Status, { text: string; tone: "success" | "warn" | "info" }> = {
+  connected: { text: "Connecté", tone: "success" },
+  expired: { text: "Reconnexion requise", tone: "warn" },
+  readonly: { text: "Lecture seule", tone: "info" },
 };
 
 export default function Accounts() {
@@ -41,8 +41,8 @@ export default function Accounts() {
                 <div className="truncate text-muted">{a.platform === "tiktok" ? tiktokHandle || "pseudo non renseigné" : a.handle}</div>
               </div>
             </div>
-            <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${BADGE[a.status].cls}`}>{BADGE[a.status].text}</span>
-            <ul className="space-y-1 leading-relaxed text-[#b4b4c7]">
+            <Badge tone={BADGE[a.status].tone}>{BADGE[a.status].text}</Badge>
+            <ul className="space-y-1 leading-relaxed text-soft">
               {a.capabilities.map((c) => (
                 <li key={c}>{c}</li>
               ))}
@@ -76,23 +76,23 @@ export default function Accounts() {
           <div className="text-base font-semibold">Ajouter un compte</div>
           <div className="mt-1 text-muted">Une autre chaîne Twitch, un second compte YouTube, ou une plateforme compatible RTMP.</div>
         </div>
-        <Button variant="primary" className="min-h-11">
+        <Button variant="primary">
           Connecter une plateforme
         </Button>
       </Card>
 
       <Card className="p-5">
-        <div className="mb-3 font-semibold">Équipe de modération</div>
+        <h2 className="mb-3 text-base font-semibold">Équipe de modération</h2>
         {[
           { n: "Kaizen", where: "Twitch, Kick", role: "Modérateur" },
           { n: "Sarah.b", where: "YouTube", role: "Modératrice" },
         ].map((m, i) => (
-          <div key={m.n} className={`flex items-center gap-3.5 py-2.5 ${i === 0 ? "border-b border-[#20202c]" : ""}`}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2a2a3a] font-semibold">{m.n[0]}</span>
+          <div key={m.n} className={`flex items-center gap-3.5 py-2.5 ${i === 0 ? "border-b border-line" : ""}`}>
+            <Avatar name={m.n} />
             <span className="flex-1">
               <b>{m.n}</b> <span className="text-muted">· {m.where}</span>
             </span>
-            <span className="rounded-md bg-[#2a2a3a] px-2.5 py-0.5 text-xs">{m.role}</span>
+            <Badge>{m.role}</Badge>
           </div>
         ))}
       </Card>
