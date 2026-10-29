@@ -29,7 +29,10 @@ fn candidates(custom: Option<&str>) -> Vec<String> {
     if let Some(p) = custom.map(str::trim).filter(|p| !p.is_empty()) {
         list.push(p.to_string());
     }
-    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)) {
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(PathBuf::from))
+    {
         for sub in ["", "ffmpeg", "bin"] {
             let p = dir.join(sub).join(executable_name());
             if p.is_file() {
@@ -52,7 +55,11 @@ pub fn command(path: &str) -> Command {
 async fn probe(path: &str) -> Option<String> {
     let out = tokio::time::timeout(
         Duration::from_secs(5),
-        command(path).arg("-version").stdin(Stdio::null()).stderr(Stdio::null()).output(),
+        command(path)
+            .arg("-version")
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output(),
     )
     .await
     .ok()?
@@ -60,13 +67,21 @@ async fn probe(path: &str) -> Option<String> {
     if !out.status.success() {
         return None;
     }
-    String::from_utf8_lossy(&out.stdout).lines().next().map(str::to_string)
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .map(str::to_string)
 }
 
 pub async fn detect(custom: Option<&str>) -> FfmpegStatus {
     for path in candidates(custom) {
         if let Some(version) = probe(&path).await {
-            return FfmpegStatus { found: true, path: Some(path), version: Some(version), message: None };
+            return FfmpegStatus {
+                found: true,
+                path: Some(path),
+                version: Some(version),
+                message: None,
+            };
         }
     }
     let how = if cfg!(windows) {
