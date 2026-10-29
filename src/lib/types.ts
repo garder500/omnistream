@@ -122,6 +122,16 @@ export interface TitleResult {
   message: string;
 }
 
+export type StreamEventKind =
+  | { type: "follow" }
+  | { type: "sub"; months: number }
+  | { type: "gift"; recipient: string | null }
+  | { type: "raid"; viewers: number }
+  | { type: "donation"; amount_cents: number; currency: string }
+  | { type: "bits"; amount: number };
+
+export type StreamEventType = StreamEventKind["type"];
+
 export type StreamEvent = {
   id: string;
   channel_id: string;
@@ -129,7 +139,32 @@ export type StreamEvent = {
   who: string;
   message: string | null;
   timestamp_ms: number;
-} & ({ type: "sub"; months: number } | { type: "gift"; recipient: string | null } | { type: "raid"; viewers: number });
+} & StreamEventKind;
+
+// Historique des sessions (miroir de `omnistream-core::db::history`).
+export interface SessionSummary {
+  id: string;
+  started_at_ms: number;
+  /** `null` tant que la session est en cours. */
+  ended_at_ms: number | null;
+  peak_viewers: number;
+  avg_viewers: number;
+  event_count: number;
+  events_by_kind: Partial<Record<StreamEventType, number>>;
+}
+
+/** Somme brute des spectateurs à un sondage (les doublons entre plateformes ne sont pas retirés). */
+export interface ViewerPoint {
+  ts_ms: number;
+  total: number;
+  by_platform: Record<string, number>;
+}
+
+export interface SessionDetail {
+  summary: SessionSummary;
+  points: ViewerPoint[];
+  events: StreamEvent[];
+}
 
 export interface StreamInfo {
   channel_id: string;

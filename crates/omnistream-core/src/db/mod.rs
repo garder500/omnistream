@@ -1,5 +1,7 @@
 //! Base SQLite locale : comptes, destinations de stream, préférences, historique du chat.
 
+mod history;
+
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -10,11 +12,14 @@ use crate::automod::Rule;
 use crate::domain::{Account, Channel, Platform, StreamDestination, StreamPreset};
 use crate::Result;
 
+pub use history::{SessionDetail, SessionSummary, ViewerPoint, ViewerSampleInput, SESSION_GAP_MS};
+
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_tokens.sql"),
     include_str!("migrations/0140_presets.sql"),
     include_str!("migrations/0100_automod.sql"),
+    include_str!("migrations/0120_sessions.sql"),
 ];
 
 pub struct Database {

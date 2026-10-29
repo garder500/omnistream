@@ -178,8 +178,56 @@ pub fn to_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
     }
 }
 
+/// Un PRIVMSG portant le tag `bits` est aussi un cheer : on en tire un événement
+/// en plus du message de chat (le message lui-même reste inchangé).
+pub fn bits_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
+    if line.command != "PRIVMSG" {
+        return None;
+    }
+    let tags = &line.tags;
+    let amount: u32 = tags.get("bits")?.parse().ok().filter(|b| *b > 0)?;
+    let login = line.prefix?.split('!').next()?;
+    let who = tags
+        .get("display-name")
+        .filter(|n| !n.is_empty())
+        .cloned()
+        .unwrap_or_else(|| login.to_string());
+    let timestamp_ms: i64 = tags
+        .get("tmi-sent-ts")
+        .and_then(|t| t.parse().ok())
+        .unwrap_or(0);
+    Some(ChatEvent::Event(StreamEvent {
+        id: tags
+            .get("id")
+            .map(|i| format!("bits:{i}"))
+            .unwrap_or_else(|| format!("bits:{login}:{timestamp_ms}")),
+        channel_id: channel.id.clone(),
+        platform: Platform::Twitch,
+        who,
+        kind: StreamEventKind::Bits { amount },
+        message: Some(clean_text(line.trailing.unwrap_or(""))).filter(|t| !t.is_empty()),
+        timestamp_ms,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cheer_yields_a_bits_event() {
+        let raw = "@bits=100;display-name=Fan;id=m7;tmi-sent-ts=9 :fan!fan@fan.tmi.twitch.tv PRIVMSG #garder :Cheer100 gg";
+        let line = parse_line(raw).unwrap();
+        let Some(ChatEvent::Event(e)) = bits_event(&line, &channel()) else {
+            panic!("événement attendu")
+        };
+        assert_eq!(e.kind, StreamEventKind::Bits { amount: 100 });
+        assert_eq!(e.who, "Fan");
+        assert_eq!(e.id, "bits:m7");
+        let plain =
+            parse_line("@id=m8;tmi-sent-ts=9 :fan!fan@fan.tmi.twitch.tv PRIVMSG #garder :salut")
+                .unwrap();
+        assert!(bits_event(&plain, &channel()).is_none());
+    }
+
     use super::*;
 
     fn channel() -> Channel {
