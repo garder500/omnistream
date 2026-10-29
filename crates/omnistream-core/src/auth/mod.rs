@@ -4,7 +4,9 @@
 //! dans l'application ni de redirection locale, l'utilisateur saisit un code
 //! sur twitch.tv/activate.
 
+pub mod kick;
 pub(crate) mod loopback;
+pub(crate) mod pkce;
 pub mod trovo;
 pub mod twitch;
 pub mod youtube;

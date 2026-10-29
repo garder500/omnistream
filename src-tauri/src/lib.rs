@@ -1,6 +1,7 @@
 mod ai_commands;
 mod bansync_commands;
 mod commands;
+mod kick;
 mod overlay_commands;
 mod state;
 mod trovo;
@@ -160,6 +161,9 @@ pub fn run() {
             trovo::get_trovo_settings,
             trovo::set_trovo_app,
             trovo::trovo_login_start,
+            kick::get_kick_settings,
+            kick::set_kick_app,
+            kick::kick_login_start,
             youtube::get_youtube_settings,
             youtube::set_youtube_app,
             youtube::youtube_login_start,

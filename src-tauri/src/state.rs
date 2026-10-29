@@ -6,7 +6,7 @@ use omnistream_core::automation_service::AutomationService;
 use omnistream_core::automod::AutoMod;
 use omnistream_core::bansync::BanSync;
 use omnistream_core::connectors::{
-    ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector, YoutubeConnector,
+    ChatEvent, ConnectorRegistry, KickConnector, TrovoConnector, TwitchConnector, YoutubeConnector,
 };
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
@@ -20,6 +20,7 @@ pub struct AppState {
     pub twitch: TwitchConnector,
     pub trovo: TrovoConnector,
     pub youtube: YoutubeConnector,
+    pub kick: KickConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
     pub automation: Arc<AutomationService>,
@@ -59,10 +60,19 @@ impl AppState {
             }
         }));
 
+        let kick = KickConnector::new();
+        let kick_db = db.clone();
+        kick.on_token_refresh(Arc::new(move |user_id, tokens| {
+            if let Err(e) = kick_db.save_tokens(user_id, tokens) {
+                eprintln!("impossible d'enregistrer les jetons Kick renouvelés: {e}");
+            }
+        }));
+
         let mut connectors = ConnectorRegistry::new();
         connectors.register(Arc::new(twitch.clone()));
         connectors.register(Arc::new(trovo.clone()));
         connectors.register(Arc::new(youtube.clone()));
+        connectors.register(Arc::new(kick.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
         let automation = Arc::new(AutomationService::new(
@@ -82,6 +92,7 @@ impl AppState {
             twitch,
             trovo,
             youtube,
+            kick,
             moderation: ModerationEngine::new(connectors.clone()),
             bansync: BanSync::new(db.clone(), connectors.clone()),
             connectors,
