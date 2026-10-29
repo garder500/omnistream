@@ -84,6 +84,14 @@ pub struct ChatMessage {
     pub text: String,
     /// Millisecondes depuis l'epoch Unix.
     pub timestamp_ms: i64,
+    /// Émotes repérées dans `text` (natives de la plateforme puis 7TV/BTTV/FFZ).
+    #[serde(default)]
+    pub emotes: Vec<crate::emotes::EmoteSpan>,
+    #[serde(default)]
+    pub badges: Vec<crate::emotes::ChatBadge>,
+    /// Identifiant de salon Twitch (sert à charger les émotes tierces); jamais envoyé à l'interface.
+    #[serde(default, skip_serializing)]
+    pub room_id: Option<String>,
 }
 
 /// Événement de live (abonnement, don de subs, raid...).
