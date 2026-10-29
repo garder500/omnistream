@@ -1,5 +1,6 @@
 use omnistream_core::auth::twitch::{self as twitch_auth, DeviceCode};
 use omnistream_core::connectors::TwitchCreds;
+use omnistream_core::db::{SessionDetail, SessionSummary, ViewerSampleInput};
 use omnistream_core::domain::{Account, Channel, ModerationAction, ModerationKind, Platform, StreamInfo};
 use omnistream_core::ffmpeg::FfmpegStatus;
 use omnistream_core::streaming::{DestinationInput, DestinationView, StreamingState};
@@ -197,14 +198,69 @@ pub async fn moderate(state: State<'_, AppState>, channel_id: String, kind: Mode
 #[tauri::command]
 pub async fn stream_infos(state: State<'_, AppState>) -> CmdResult<Vec<StreamInfo>> {
     let mut infos = Vec::new();
+    let mut samples = Vec::new();
+    let mut failed = false;
     for channel in state.db.list_channels().map_err(err)? {
         if let Ok(connector) = state.connectors.get(&channel.platform) {
-            if let Ok(Some(info)) = connector.stream_info(&channel).await {
-                infos.push(info);
+            match connector.stream_info(&channel).await {
+                Ok(Some(info)) => {
+                    samples.push(ViewerSampleInput {
+                        channel_id: channel.id.clone(),
+                        platform: channel.platform.clone(),
+                        viewers: info.viewers,
+                    });
+                    infos.push(info);
+                }
+                Ok(None) => {}
+                Err(_) => failed = true,
             }
         }
     }
+    // Un connecteur en erreur n'est pas « hors ligne » : on saute ce relevé plutôt que
+    // d'enregistrer un creux factice ou de couper la session en deux.
+    // L'historique est un bonus : une erreur d'écriture ne doit pas masquer l'état du live.
+    if !failed {
+        if let Err(e) = state.db.record_poll(now_ms(), &samples) {
+            eprintln!("historique des sessions: {e}");
+        }
+    }
     Ok(infos)
+}
+
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+pub fn list_sessions(state: State<'_, AppState>) -> CmdResult<Vec<SessionSummary>> {
+    state.db.list_sessions(200).map_err(err)
+}
+
+#[tauri::command]
+pub fn session_detail(state: State<'_, AppState>, id: String) -> CmdResult<SessionDetail> {
+    state.db.session_detail(&id).map_err(err)?.ok_or_else(|| "session introuvable".to_string())
+}
+
+#[tauri::command]
+/// Écrit le CSV dans le dossier Téléchargements (sinon le dossier de données) et renvoie le chemin.
+/// Côté Rust plutôt qu'un téléchargement de la webview, peu fiable selon la plateforme.
+pub fn save_session_csv(app: AppHandle, state: State<'_, AppState>, id: String) -> CmdResult<String> {
+    let csv = state.db.export_session_csv(&id).map_err(err)?.ok_or_else(|| "session introuvable".to_string())?;
+    let dir = app.path().download_dir().or_else(|_| app.path().app_data_dir()).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let safe_id: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let path = dir.join(format!("omnistream-session-{safe_id}.csv"));
+    // BOM UTF-8 pour qu'Excel lise correctement les accents.
+    std::fs::write(&path, format!("\u{feff}{csv}")).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+pub fn delete_session(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.db.delete_session(&id).map_err(err)
 }
 
 #[tauri::command]

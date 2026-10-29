@@ -16,7 +16,12 @@ async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::R
                 let flag = flag_reason(&m.text);
                 app.emit("chat://message", json!({ "message": m, "flag": flag }))
             }
-            ChatEvent::Event(e) => app.emit("chat://event", e),
+            ChatEvent::Event(e) => {
+                if let Err(err) = app.state::<AppState>().db.record_event(&e, commands::now_ms()) {
+                    eprintln!("historique des événements: {err}");
+                }
+                app.emit("chat://event", e)
+            }
             ChatEvent::MessageDeleted { channel_id, message_id } => {
                 app.emit("chat://deleted", json!({ "channel_id": channel_id, "message_id": message_id }))
             }
@@ -76,6 +81,10 @@ pub fn run() {
             commands::send_message,
             commands::moderate,
             commands::stream_infos,
+            commands::list_sessions,
+            commands::session_detail,
+            commands::save_session_csv,
+            commands::delete_session,
             commands::list_destinations,
             commands::save_destination,
             commands::streaming_state,

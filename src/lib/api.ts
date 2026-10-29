@@ -4,6 +4,8 @@ import type {
   Channel,
   DeviceCode,
   ModerationKind,
+  SessionDetail,
+  SessionSummary,
   Settings,
   DestinationInput,
   FfmpegStatus,
@@ -29,6 +31,13 @@ export const api = {
   streamInfos: () => invoke<StreamInfo[]>("stream_infos"),
 
   streamingState: () => invoke<StreamingState>("streaming_state"),
+
+  listSessions: () => invoke<SessionSummary[]>("list_sessions"),
+  sessionDetail: (id: string) => invoke<SessionDetail>("session_detail", { id }),
+  /** Écrit le CSV dans le dossier Téléchargements ; renvoie le chemin du fichier. */
+  saveSessionCsv: (id: string) => invoke<string>("save_session_csv", { id }),
+  deleteSession: (id: string) => invoke<void>("delete_session", { id }),
+
   listDestinations: () => invoke<StreamDestination[]>("list_destinations"),
   saveDestination: (destination: DestinationInput) => invoke<StreamDestination>("save_destination", { destination }),
   deleteDestination: (id: string) => invoke<void>("delete_destination", { id }),

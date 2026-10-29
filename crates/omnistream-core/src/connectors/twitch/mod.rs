@@ -330,7 +330,8 @@ async fn session(
                             return Err(Error::NotAuthenticated("Twitch"));
                         }
                         _ => {
-                            if let Some(event) = irc::to_event(&line, channel) {
+                            let events = [irc::to_event(&line, channel), irc::bits_event(&line, channel)];
+                            for event in events.into_iter().flatten() {
                                 if tx.send(event).await.is_err() {
                                     return Ok(());
                                 }

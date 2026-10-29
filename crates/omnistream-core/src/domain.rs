@@ -90,9 +90,40 @@ pub struct ChatMessage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEventKind {
+    /// Nouveau follow (nécessite une source d'événements dédiée côté plateforme).
+    Follow,
     Sub { months: u32 },
     Gift { recipient: Option<String> },
     Raid { viewers: u32 },
+    /// Don d'argent, en centimes de `currency` (code ISO 4217) pour éviter les flottants.
+    Donation { amount_cents: u64, currency: String },
+    /// Bits Twitch (cheer).
+    Bits { amount: u32 },
+}
+
+impl StreamEventKind {
+    /// Nom stable (celui du tag serde), utilisé pour les filtres, la base et l'export.
+    pub fn name(&self) -> &'static str {
+        match self {
+            StreamEventKind::Follow => "follow",
+            StreamEventKind::Sub { .. } => "sub",
+            StreamEventKind::Gift { .. } => "gift",
+            StreamEventKind::Raid { .. } => "raid",
+            StreamEventKind::Donation { .. } => "donation",
+            StreamEventKind::Bits { .. } => "bits",
+        }
+    }
+
+    /// Quantité principale de l'événement (mois, spectateurs, bits, centimes), 0 si sans objet.
+    pub fn amount(&self) -> u64 {
+        match self {
+            StreamEventKind::Follow | StreamEventKind::Gift { .. } => 0,
+            StreamEventKind::Sub { months } => u64::from(*months),
+            StreamEventKind::Raid { viewers } => u64::from(*viewers),
+            StreamEventKind::Donation { amount_cents, .. } => *amount_cents,
+            StreamEventKind::Bits { amount } => u64::from(*amount),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

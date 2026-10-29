@@ -1,20 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatMessage } from "../components/ChatMessage";
+import EventFeed from "../components/EventFeed";
 import { Button, Card, Input, LiveBadge } from "../components/ui";
 import { PlatformBadge, PLATFORM_KEYS, PLATFORMS, platformKey, type PlatformKey } from "../lib/platforms";
 import { formatAge, useStore } from "../lib/store";
-import type { StreamEvent } from "../lib/types";
-
-function describe(e: StreamEvent): string {
-  switch (e.type) {
-    case "sub":
-      return e.months > 1 ? `s'abonne · ${e.months} mois` : "s'abonne";
-    case "gift":
-      return e.recipient ? `offre un abonnement à ${e.recipient}` : "offre un abonnement";
-    case "raid":
-      return `raid avec ${e.viewers} viewers`;
-  }
-}
 
 export default function MultiChat({ go }: { go: (id: "accounts") => void }) {
   const { messages, events, channels, infos, msgPerMin, send } = useStore();
@@ -97,26 +86,7 @@ export default function MultiChat({ go }: { go: (id: "accounts") => void }) {
         </Card>
 
         <aside className="flex w-96 shrink-0 flex-col gap-4">
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex justify-between border-b border-line px-4 py-3 font-semibold">
-              Événements <span className="font-normal text-muted">Cette session</span>
-            </div>
-            <div className="flex flex-col gap-2 overflow-auto p-2.5">
-              {events.length === 0 && <p className="p-4 text-center text-muted">Abonnements et raids apparaîtront ici.</p>}
-              {events.map((e) => (
-                <div key={e.id} className={`flex items-center gap-3 rounded-control border p-3 ${e.type === "raid" ? "border-warn/40 bg-warn-soft" : "border-brand-line bg-raised"}`}>
-                  <PlatformBadge platform={platformKey(e.platform)} size={32} />
-                  <div className="min-w-0 flex-1">
-                    <div>
-                      <b>{e.who}</b> <span className="text-soft">{describe(e)}</span>
-                    </div>
-                    {e.message && <div className="text-[13px] text-muted">« {e.message} »</div>}
-                  </div>
-                  <span className="text-xs text-muted">{formatAge(e.timestamp_ms)}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+          <EventFeed events={events} title="Événements" emptyText="Follows, abonnements, raids, dons et bits apparaîtront ici." className="flex-1" />
         </aside>
       </div>
     </div>
