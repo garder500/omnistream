@@ -49,7 +49,7 @@ export default function Dashboard({ go }: { go: Go }) {
             {PLATFORM_KEYS.map((p, i) => {
               const mine = channels.filter((c) => platformKey(c.platform) === p);
               const platformViewers = infos.filter((info) => mine.some((c) => c.id === info.channel_id)).reduce((n, info) => n + info.viewers, 0);
-              const supported = p === "twitch";
+              const supported = p === "twitch" || p === "trovo";
               return (
                 <div key={p} className={`flex items-center gap-3.5 py-3.5 ${i < PLATFORM_KEYS.length - 1 ? "border-b border-line" : ""}`}>
                   <PlatformBadge platform={p} size={30} />

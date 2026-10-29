@@ -38,10 +38,11 @@ pub async fn restore_session(state: &AppState) {
             }
         }
     }
+    crate::trovo::restore(state).await;
     reconnect_channels(state).await;
 }
 
-async fn reconnect_channels(state: &AppState) {
+pub(crate) async fn reconnect_channels(state: &AppState) {
     for channel in state.db.list_channels().unwrap_or_default() {
         if let Ok(connector) = state.connectors.get(&channel.platform) {
             let _ = connector.connect(&channel, state.chat_tx.clone()).await;
@@ -115,8 +116,13 @@ pub async fn twitch_login_start(app: AppHandle, state: State<'_, AppState>) -> C
 
 #[tauri::command]
 pub async fn remove_account(app: AppHandle, state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let removed = state.db.list_accounts().map_err(err)?.into_iter().find(|a| a.id == id);
     state.db.delete_account(&id).map_err(err)?;
-    state.twitch.set_credentials(None).await;
+    if removed.is_some_and(|a| a.platform == Platform::Trovo) {
+        state.trovo.set_account(None).await;
+    } else {
+        state.twitch.set_credentials(None).await;
+    }
     reconnect_channels(&state).await;
     let _ = app.emit("account://changed", ());
     Ok(())
@@ -130,7 +136,7 @@ pub fn list_channels(state: State<'_, AppState>) -> CmdResult<Vec<Channel>> {
 #[tauri::command]
 pub async fn add_channel(state: State<'_, AppState>, platform: String, name: String) -> CmdResult<Channel> {
     let platform = Platform::from(platform.as_str());
-    if platform != Platform::Twitch {
+    if !matches!(platform, Platform::Twitch | Platform::Trovo) {
         return Err(format!("{platform} n'est pas encore pris en charge."));
     }
     let login = name.trim().trim_start_matches(['#', '@']).to_lowercase();

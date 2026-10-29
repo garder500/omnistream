@@ -1,5 +1,5 @@
 // Miroir des types de `omnistream-core::domain`.
-export type Platform = "twitch" | "youtube" | "kick" | "tiktok" | { other: string };
+export type Platform = "twitch" | "youtube" | "kick" | "tiktok" | "trovo" | { other: string };
 
 export interface Account {
   id: string;
@@ -125,6 +125,12 @@ export interface DeviceCode {
   verification_uri: string;
   expires_in: number;
   interval: number;
+}
+
+export interface TrovoSettings {
+  client_id: string | null;
+  has_secret: boolean;
+  redirect_uri: string;
 }
 
 export interface Settings {

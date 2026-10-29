@@ -1,6 +1,7 @@
 //! Connecteurs de chat. Pour ajouter une plateforme : implémenter
 //! [`ChatConnector`] puis l'enregistrer dans [`ConnectorRegistry`].
 
+mod trovo;
 mod twitch;
 
 use std::collections::HashMap;
@@ -12,10 +13,11 @@ use tokio::sync::mpsc;
 use crate::domain::{Channel, ChatMessage, ModerationAction, Platform, StreamEvent, StreamInfo};
 use crate::{Error, Result};
 
+pub use trovo::{TrovoAccount, TrovoApp, TrovoConnector};
 pub use twitch::{TokenHook, TwitchConnector, TwitchCreds};
 
 /// Événements remontés par un connecteur vers l'agrégateur de chat.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChatEvent {
     Message(ChatMessage),
     Event(StreamEvent),

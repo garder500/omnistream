@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TwitchConnector};
+use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
 use omnistream_core::secrets::KeyringStore;
@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 pub struct AppState {
     pub db: Arc<Database>,
     pub twitch: TwitchConnector,
+    pub trovo: TrovoConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
     pub streams: StreamService,
@@ -29,13 +30,23 @@ impl AppState {
             }
         }));
 
+        let trovo = TrovoConnector::new();
+        let trovo_db = db.clone();
+        trovo.on_token_refresh(Arc::new(move |user_id, tokens| {
+            if let Err(e) = trovo_db.save_tokens(user_id, tokens) {
+                eprintln!("impossible d'enregistrer les jetons Trovo renouvelés: {e}");
+            }
+        }));
+
         let mut connectors = ConnectorRegistry::new();
         connectors.register(Arc::new(twitch.clone()));
+        connectors.register(Arc::new(trovo.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
         let state = Self {
             db,
             twitch,
+            trovo,
             moderation: ModerationEngine::new(connectors.clone()),
             connectors,
             streams,

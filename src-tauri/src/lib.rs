@@ -1,5 +1,6 @@
 mod commands;
 mod state;
+mod trovo;
 
 use omnistream_core::connectors::ChatEvent;
 use omnistream_core::moderation::flag_reason;
@@ -70,6 +71,9 @@ pub fn run() {
             commands::list_accounts,
             commands::twitch_login_start,
             commands::remove_account,
+            trovo::get_trovo_settings,
+            trovo::set_trovo_app,
+            trovo::trovo_login_start,
             commands::list_channels,
             commands::add_channel,
             commands::remove_channel,
