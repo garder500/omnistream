@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::connectors::ChatEvent;
 use crate::domain::{Channel, ChatAuthor, ChatMessage, Platform, StreamEvent, StreamEventKind};
+use crate::emotes::{parse_badges, parse_twitch_emotes};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct IrcLine<'a> {
@@ -95,6 +96,14 @@ pub fn to_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
                 .get("tmi-sent-ts")
                 .and_then(|t| t.parse().ok())
                 .unwrap_or(0);
+            let raw = line.trailing.unwrap_or("");
+            let text = clean_text(raw);
+            // Les indices Twitch comptent le préfixe `\u{1}ACTION ` (8 caractères) des `/me`.
+            let offset = if text.len() != raw.len() { 8 } else { 0 };
+            let emotes = tags
+                .get("emotes")
+                .map(|e| parse_twitch_emotes(e, &text, offset))
+                .unwrap_or_default();
             Some(ChatEvent::Message(ChatMessage {
                 id: tags.get("id")?.clone(),
                 channel_id: channel.id.clone(),
@@ -110,8 +119,14 @@ pub fn to_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
                         || has_badge(tags, &["moderator", "broadcaster"]),
                     is_subscriber: tags.get("subscriber").map(|m| m == "1").unwrap_or(false),
                 },
-                text: clean_text(line.trailing.unwrap_or("")),
+                text,
                 timestamp_ms,
+                emotes,
+                badges: tags
+                    .get("badges")
+                    .map(|b| parse_badges(b))
+                    .unwrap_or_default(),
+                room_id: tags.get("room-id").cloned().filter(|r| !r.is_empty()),
             }))
         }
         "CLEARMSG" => Some(ChatEvent::MessageDeleted {
@@ -191,6 +206,24 @@ mod tests {
         assert!(m.author.is_moderator && m.author.is_subscriber);
         assert_eq!(m.text, "GG pour le boss : bien joué");
         assert_eq!(m.timestamp_ms, 1_700_000_000_000);
+    }
+
+    #[test]
+    fn extracts_native_emotes_and_badges() {
+        let raw = "@badges=subscriber/6,vip/1;emotes=25:0-4;id=e1;room-id=99;user-id=1 :a!a@a.tmi.twitch.tv PRIVMSG #c :Kappa ok";
+        let Some(ChatEvent::Message(m)) = to_event(&parse_line(raw).unwrap(), &channel()) else {
+            panic!()
+        };
+        assert_eq!(m.emotes.len(), 1);
+        assert_eq!(m.emotes[0].name, "Kappa");
+        assert_eq!(m.badges.len(), 2);
+        assert_eq!(m.room_id.as_deref(), Some("99"));
+        let me = "@emotes=25:8-12;id=e2 :a!a@a.tmi.twitch.tv PRIVMSG #c :\u{1}ACTION Kappa\u{1}";
+        let Some(ChatEvent::Message(m)) = to_event(&parse_line(me).unwrap(), &channel()) else {
+            panic!()
+        };
+        assert_eq!(m.text, "Kappa");
+        assert_eq!(m.emotes[0].name, "Kappa");
     }
 
     #[test]

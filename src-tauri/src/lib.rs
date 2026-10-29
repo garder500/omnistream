@@ -2,6 +2,7 @@ mod commands;
 mod state;
 
 use omnistream_core::connectors::ChatEvent;
+use omnistream_core::emotes::EmoteCatalog;
 use omnistream_core::moderation::flag_reason;
 use serde_json::json;
 use tauri::{Emitter, Manager};
@@ -12,10 +13,12 @@ use state::AppState;
 async fn forward_chat_events(
     app: tauri::AppHandle,
     mut rx: tokio::sync::mpsc::Receiver<ChatEvent>,
+    emotes: EmoteCatalog,
 ) {
     while let Some(event) = rx.recv().await {
         let _ = match event {
-            ChatEvent::Message(m) => {
+            ChatEvent::Message(mut m) => {
+                emotes.annotate(&mut m);
                 let flag = flag_reason(&m.text);
                 app.emit("chat://message", json!({ "message": m, "flag": flag }))
             }
@@ -65,7 +68,8 @@ pub fn run() {
             let (state, chat_rx) = AppState::new(dir.join("omnistream.db"))?;
             app.manage(state);
 
-            tauri::async_runtime::spawn(forward_chat_events(app.handle().clone(), chat_rx));
+            let emotes = EmoteCatalog::new(dir.join("emotes"));
+            tauri::async_runtime::spawn(forward_chat_events(app.handle().clone(), chat_rx, emotes));
             tauri::async_runtime::spawn(forward_streaming_events(app.handle().clone()));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
