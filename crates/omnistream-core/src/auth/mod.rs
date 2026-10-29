@@ -4,6 +4,7 @@
 //! dans l'application ni de redirection locale, l'utilisateur saisit un code
 //! sur twitch.tv/activate.
 
+pub mod trovo;
 pub mod twitch;
 
 use serde::{Deserialize, Serialize};

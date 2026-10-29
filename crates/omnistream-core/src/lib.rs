@@ -4,9 +4,14 @@
 
 pub mod ai;
 pub mod auth;
+pub mod automation;
+pub mod automation_service;
+pub mod automod;
+pub mod bansync;
 pub mod connectors;
 pub mod db;
 pub mod domain;
+pub mod emotes;
 pub mod error;
 pub mod ffmpeg;
 pub mod ingest;

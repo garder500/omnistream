@@ -78,7 +78,22 @@ export function useAi(): AiCtx {
 const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e));
 
 export function eventLine(e: StreamEvent): string {
-  const what = e.type === "sub" ? `abonnement (${e.months} mois)` : e.type === "gift" ? "don d'abonnement" : `raid (${e.viewers} spectateurs)`;
+  const what = (() => {
+    switch (e.type) {
+      case "follow":
+        return "follow";
+      case "sub":
+        return `abonnement (${e.months} mois)`;
+      case "gift":
+        return "don d'abonnement";
+      case "raid":
+        return `raid (${e.viewers} spectateurs)`;
+      case "donation":
+        return `don (${(e.amount_cents / 100).toFixed(2)} ${e.currency})`;
+      case "bits":
+        return `${e.amount} bits`;
+    }
+  })();
   return `${e.who} : ${what}`;
 }
 
