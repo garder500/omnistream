@@ -1,3 +1,4 @@
+mod ai_commands;
 mod commands;
 mod state;
 
@@ -86,6 +87,10 @@ pub fn run() {
             commands::set_ffmpeg_path,
             commands::set_stream_title,
             commands::twitch_current_title,
+            ai_commands::ai_get_settings,
+            ai_commands::ai_save_settings,
+            ai_commands::ai_score_message,
+            ai_commands::ai_summarize,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Omnistream");

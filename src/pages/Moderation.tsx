@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AiModerationPanel } from "../components/AiModerationPanel";
 import { Avatar, Button, Card, PageHeader } from "../components/ui";
 import { PlatformBadge, platformKey } from "../lib/platforms";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
@@ -13,6 +14,8 @@ export default function Moderation() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Modération" subtitle="Les messages suspects (liens, majuscules, répétitions) arrivent ici en temps réel" />
+
+      <AiModerationPanel />
 
       <div className="flex min-h-0 flex-1 gap-5">
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">

@@ -1,3 +1,4 @@
+import { AiSummaryCard } from "../components/AiSummaryCard";
 import { ChatMessage } from "../components/ChatMessage";
 import { Badge, Card, CardHeader, LinkButton, LiveBadge, PageHeader } from "../components/ui";
 import { PlatformBadge, PLATFORM_KEYS, PLATFORMS, platformKey } from "../lib/platforms";
@@ -72,6 +73,7 @@ export default function Dashboard({ go }: { go: Go }) {
               );
             })}
           </Card>
+          <AiSummaryCard goModeration={() => go("moderation")} />
         </section>
 
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
