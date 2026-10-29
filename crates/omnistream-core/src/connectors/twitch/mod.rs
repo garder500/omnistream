@@ -134,7 +134,13 @@ impl Inner {
         Ok(creds.clone())
     }
 
-    async fn helix(&self, method: Method, path: &str, query: &[(&str, &str)], body: Option<Value>) -> Result<Value> {
+    async fn helix(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, &str)],
+        body: Option<Value>,
+    ) -> Result<Value> {
         let mut attempt = 0;
         loop {
             let creds = self.auth(attempt > 0).await?;
@@ -168,7 +174,9 @@ impl Inner {
         if let Some(id) = self.user_ids.lock().unwrap().get(&login) {
             return Ok(id.clone());
         }
-        let v = self.helix(Method::GET, "users", &[("login", &login)], None).await?;
+        let v = self
+            .helix(Method::GET, "users", &[("login", &login)], None)
+            .await?;
         let id = v["data"][0]["id"]
             .as_str()
             .ok_or_else(|| Error::Other(format!("chaîne Twitch introuvable: {login}")))?
@@ -220,23 +228,34 @@ impl ChatConnector for TwitchConnector {
         let inner = &self.inner;
         let me = inner.auth(false).await?.user_id;
         let broadcaster = inner.user_id(&action.channel.external_id).await?;
-        let scope = [("broadcaster_id", broadcaster.as_str()), ("moderator_id", me.as_str())];
+        let scope = [
+            ("broadcaster_id", broadcaster.as_str()),
+            ("moderator_id", me.as_str()),
+        ];
         match &action.kind {
             ModerationKind::DeleteMessage { message_id } => {
                 let q = [scope[0], scope[1], ("message_id", message_id.as_str())];
-                inner.helix(Method::DELETE, "moderation/chat", &q, None).await?;
+                inner
+                    .helix(Method::DELETE, "moderation/chat", &q, None)
+                    .await?;
             }
             ModerationKind::Timeout { user_id, seconds } => {
                 let body = json!({"data": {"user_id": user_id, "duration": seconds, "reason": DEFAULT_REASON}});
-                inner.helix(Method::POST, "moderation/bans", &scope, Some(body)).await?;
+                inner
+                    .helix(Method::POST, "moderation/bans", &scope, Some(body))
+                    .await?;
             }
             ModerationKind::Ban { user_id, reason } => {
                 let body = json!({"data": {"user_id": user_id, "reason": reason.as_deref().unwrap_or(DEFAULT_REASON)}});
-                inner.helix(Method::POST, "moderation/bans", &scope, Some(body)).await?;
+                inner
+                    .helix(Method::POST, "moderation/bans", &scope, Some(body))
+                    .await?;
             }
             ModerationKind::Unban { user_id } => {
                 let q = [scope[0], scope[1], ("user_id", user_id.as_str())];
-                inner.helix(Method::DELETE, "moderation/bans", &q, None).await?;
+                inner
+                    .helix(Method::DELETE, "moderation/bans", &q, None)
+                    .await?;
             }
         }
         Ok(())
@@ -248,9 +267,16 @@ impl ChatConnector for TwitchConnector {
         }
         let v = self
             .inner
-            .helix(Method::GET, "streams", &[("user_login", &channel.external_id)], None)
+            .helix(
+                Method::GET,
+                "streams",
+                &[("user_login", &channel.external_id)],
+                None,
+            )
             .await?;
-        let Some(s) = v["data"].get(0) else { return Ok(None) };
+        let Some(s) = v["data"].get(0) else {
+            return Ok(None);
+        };
         Ok(Some(StreamInfo {
             channel_id: channel.id.clone(),
             title: s["title"].as_str().unwrap_or_default().to_string(),
@@ -271,7 +297,13 @@ async fn run_channel(
     loop {
         let started = Instant::now();
         let _ = session(&inner, &channel, &tx, &mut outbox).await;
-        if tx.send(ChatEvent::Disconnected { channel_id: channel.id.clone() }).await.is_err() {
+        if tx
+            .send(ChatEvent::Disconnected {
+                channel_id: channel.id.clone(),
+            })
+            .await
+            .is_err()
+        {
             return;
         }
         if started.elapsed() > Duration::from_secs(30) {
@@ -289,13 +321,18 @@ async fn session(
     outbox: &mut mpsc::UnboundedReceiver<String>,
 ) -> Result<()> {
     let net = |e: tokio_tungstenite::tungstenite::Error| Error::Network(e.to_string());
-    let (mut ws, _) = tokio_tungstenite::connect_async(IRC_URL).await.map_err(net)?;
+    let (mut ws, _) = tokio_tungstenite::connect_async(IRC_URL)
+        .await
+        .map_err(net)?;
     let login = channel.external_id.to_lowercase();
 
     // Sans compte connecté, on lit le chat en anonyme (pseudo `justinfan*`).
     let (nick, pass) = match inner.auth(false).await {
         Ok(c) => (c.login, format!("oauth:{}", c.tokens.access_token)),
-        Err(_) => (format!("justinfan{}", now_secs() % 100_000), "SCHMOOPIIE".to_string()),
+        Err(_) => (
+            format!("justinfan{}", now_secs() % 100_000),
+            "SCHMOOPIIE".to_string(),
+        ),
     };
     for line in [
         "CAP REQ :twitch.tv/tags twitch.tv/commands".to_string(),

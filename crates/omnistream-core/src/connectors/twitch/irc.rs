@@ -59,7 +59,13 @@ pub fn parse_line(line: &str) -> Option<IrcLine<'_>> {
     };
     let mut parts = head.split_whitespace();
     let command = parts.next()?;
-    Some(IrcLine { tags, prefix, command, params: parts.collect(), trailing })
+    Some(IrcLine {
+        tags,
+        prefix,
+        command,
+        params: parts.collect(),
+        trailing,
+    })
 }
 
 /// Un message `/me` arrive encadré par `\u{1}ACTION ... \u{1}`.
@@ -72,7 +78,10 @@ fn clean_text(text: &str) -> String {
 
 fn has_badge(tags: &HashMap<String, String>, names: &[&str]) -> bool {
     tags.get("badges")
-        .map(|b| b.split(',').any(|badge| names.iter().any(|n| badge.split('/').next() == Some(n))))
+        .map(|b| {
+            b.split(',')
+                .any(|badge| names.iter().any(|n| badge.split('/').next() == Some(n)))
+        })
         .unwrap_or(false)
 }
 
@@ -82,7 +91,10 @@ pub fn to_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
         "PRIVMSG" => {
             let login = line.prefix?.split('!').next()?;
             let tags = &line.tags;
-            let timestamp_ms = tags.get("tmi-sent-ts").and_then(|t| t.parse().ok()).unwrap_or(0);
+            let timestamp_ms = tags
+                .get("tmi-sent-ts")
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(0);
             Some(ChatEvent::Message(ChatMessage {
                 id: tags.get("id")?.clone(),
                 channel_id: channel.id.clone(),
@@ -113,15 +125,24 @@ pub fn to_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
                 .filter(|n| !n.is_empty())
                 .or_else(|| tags.get("login"))?
                 .clone();
-            let months = tags.get("msg-param-cumulative-months").and_then(|m| m.parse().ok());
+            let months = tags
+                .get("msg-param-cumulative-months")
+                .and_then(|m| m.parse().ok());
             let kind = match tags.get("msg-id")?.as_str() {
-                "sub" => StreamEventKind::Sub { months: months.unwrap_or(1) },
-                "resub" => StreamEventKind::Sub { months: months.unwrap_or(1) },
+                "sub" => StreamEventKind::Sub {
+                    months: months.unwrap_or(1),
+                },
+                "resub" => StreamEventKind::Sub {
+                    months: months.unwrap_or(1),
+                },
                 "subgift" | "anonsubgift" => StreamEventKind::Gift {
                     recipient: tags.get("msg-param-recipient-display-name").cloned(),
                 },
                 "raid" => StreamEventKind::Raid {
-                    viewers: tags.get("msg-param-viewerCount").and_then(|v| v.parse().ok()).unwrap_or(0),
+                    viewers: tags
+                        .get("msg-param-viewerCount")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0),
                 },
                 _ => return None,
             };
@@ -132,7 +153,10 @@ pub fn to_event(line: &IrcLine<'_>, channel: &Channel) -> Option<ChatEvent> {
                 who,
                 kind,
                 message: line.trailing.map(str::to_string).filter(|t| !t.is_empty()),
-                timestamp_ms: tags.get("tmi-sent-ts").and_then(|t| t.parse().ok()).unwrap_or(0),
+                timestamp_ms: tags
+                    .get("tmi-sent-ts")
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or(0),
             }))
         }
         _ => None,
@@ -144,7 +168,12 @@ mod tests {
     use super::*;
 
     fn channel() -> Channel {
-        Channel { id: "twitch:garder".into(), platform: Platform::Twitch, external_id: "garder".into(), display_name: "garder".into() }
+        Channel {
+            id: "twitch:garder".into(),
+            platform: Platform::Twitch,
+            external_id: "garder".into(),
+            display_name: "garder".into(),
+        }
     }
 
     #[test]
@@ -153,7 +182,9 @@ mod tests {
         let line = parse_line(raw).unwrap();
         assert_eq!(line.command, "PRIVMSG");
         assert_eq!(line.params, vec!["#garder"]);
-        let Some(ChatEvent::Message(m)) = to_event(&line, &channel()) else { panic!("message attendu") };
+        let Some(ChatEvent::Message(m)) = to_event(&line, &channel()) else {
+            panic!("message attendu")
+        };
         assert_eq!(m.id, "abc-1");
         assert_eq!(m.author.display_name, "Luna Plays");
         assert_eq!(m.author.external_id, "42");
@@ -165,15 +196,22 @@ mod tests {
     #[test]
     fn strips_action_wrapper() {
         let raw = "@id=x;user-id=1 :a!a@a.tmi.twitch.tv PRIVMSG #c :\u{1}ACTION danse\u{1}";
-        let Some(ChatEvent::Message(m)) = to_event(&parse_line(raw).unwrap(), &channel()) else { panic!() };
+        let Some(ChatEvent::Message(m)) = to_event(&parse_line(raw).unwrap(), &channel()) else {
+            panic!()
+        };
         assert_eq!(m.text, "danse");
     }
 
     #[test]
     fn parses_ping_and_clearmsg() {
         let ping = parse_line("PING :tmi.twitch.tv").unwrap();
-        assert_eq!((ping.command, ping.trailing), ("PING", Some("tmi.twitch.tv")));
-        let clear = parse_line("@login=troll;target-msg-id=m9 :tmi.twitch.tv CLEARMSG #garder :bad").unwrap();
+        assert_eq!(
+            (ping.command, ping.trailing),
+            ("PING", Some("tmi.twitch.tv"))
+        );
+        let clear =
+            parse_line("@login=troll;target-msg-id=m9 :tmi.twitch.tv CLEARMSG #garder :bad")
+                .unwrap();
         assert!(matches!(
             to_event(&clear, &channel()),
             Some(ChatEvent::MessageDeleted { message_id, .. }) if message_id == "m9"
@@ -183,7 +221,9 @@ mod tests {
     #[test]
     fn maps_raid_notice() {
         let raw = "@display-name=Speedy;id=n1;msg-id=raid;msg-param-viewerCount=85;tmi-sent-ts=5 :tmi.twitch.tv USERNOTICE #garder";
-        let Some(ChatEvent::Event(e)) = to_event(&parse_line(raw).unwrap(), &channel()) else { panic!() };
+        let Some(ChatEvent::Event(e)) = to_event(&parse_line(raw).unwrap(), &channel()) else {
+            panic!()
+        };
         assert_eq!(e.who, "Speedy");
         assert_eq!(e.kind, StreamEventKind::Raid { viewers: 85 });
     }

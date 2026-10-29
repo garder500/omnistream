@@ -34,11 +34,16 @@ impl ModerationEngine {
 /// Détection simple (sans IA) des messages à relire : liens, majuscules, répétitions.
 pub fn flag_reason(text: &str) -> Option<&'static str> {
     let lower = text.to_lowercase();
-    if ["http://", "https://", "www.", "bit.ly/", ".ly/"].iter().any(|p| lower.contains(p)) {
+    if ["http://", "https://", "www.", "bit.ly/", ".ly/"]
+        .iter()
+        .any(|p| lower.contains(p))
+    {
         return Some("Lien suspect");
     }
     let letters: Vec<char> = text.chars().filter(|c| c.is_alphabetic()).collect();
-    if letters.len() >= 12 && letters.iter().filter(|c| c.is_uppercase()).count() * 10 >= letters.len() * 8 {
+    if letters.len() >= 12
+        && letters.iter().filter(|c| c.is_uppercase()).count() * 10 >= letters.len() * 8
+    {
         return Some("Majuscules");
     }
     let words: Vec<&str> = lower.split_whitespace().collect();
@@ -100,7 +105,10 @@ mod tests {
                 external_id: "chan".into(),
                 display_name: "Chan".into(),
             },
-            kind: ModerationKind::Timeout { user_id: "u".into(), seconds: 60 },
+            kind: ModerationKind::Timeout {
+                user_id: "u".into(),
+                seconds: 60,
+            },
         }
     }
 
@@ -120,8 +128,14 @@ mod tests {
 
     #[test]
     fn flags_spam_but_not_normal_chat() {
-        assert_eq!(flag_reason("achetez des abonnés sur bit.ly/xxxx"), Some("Lien suspect"));
-        assert_eq!(flag_reason("REGARDEZ MA CHAINE REGARDEZ MA CHAINE"), Some("Majuscules"));
+        assert_eq!(
+            flag_reason("achetez des abonnés sur bit.ly/xxxx"),
+            Some("Lien suspect")
+        );
+        assert_eq!(
+            flag_reason("REGARDEZ MA CHAINE REGARDEZ MA CHAINE"),
+            Some("Majuscules")
+        );
         assert_eq!(flag_reason("spam spam spam spam"), Some("Répétition"));
         assert_eq!(flag_reason("aaaaaaaaaaaaaaaaaaaa"), Some("Répétition"));
         assert_eq!(flag_reason("GG pour le boss !!"), None);

@@ -9,7 +9,10 @@ use tauri::{Emitter, Manager};
 use state::AppState;
 
 /// Relaie les événements des connecteurs vers l'interface.
-async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::Receiver<ChatEvent>) {
+async fn forward_chat_events(
+    app: tauri::AppHandle,
+    mut rx: tokio::sync::mpsc::Receiver<ChatEvent>,
+) {
     while let Some(event) = rx.recv().await {
         let _ = match event {
             ChatEvent::Message(m) => {
@@ -17,15 +20,21 @@ async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::R
                 app.emit("chat://message", json!({ "message": m, "flag": flag }))
             }
             ChatEvent::Event(e) => app.emit("chat://event", e),
-            ChatEvent::MessageDeleted { channel_id, message_id } => {
-                app.emit("chat://deleted", json!({ "channel_id": channel_id, "message_id": message_id }))
-            }
-            ChatEvent::Connected { channel_id } => {
-                app.emit("chat://status", json!({ "channel_id": channel_id, "connected": true }))
-            }
-            ChatEvent::Disconnected { channel_id } => {
-                app.emit("chat://status", json!({ "channel_id": channel_id, "connected": false }))
-            }
+            ChatEvent::MessageDeleted {
+                channel_id,
+                message_id,
+            } => app.emit(
+                "chat://deleted",
+                json!({ "channel_id": channel_id, "message_id": message_id }),
+            ),
+            ChatEvent::Connected { channel_id } => app.emit(
+                "chat://status",
+                json!({ "channel_id": channel_id, "connected": true }),
+            ),
+            ChatEvent::Disconnected { channel_id } => app.emit(
+                "chat://status",
+                json!({ "channel_id": channel_id, "connected": false }),
+            ),
         };
     }
 }
@@ -46,8 +55,10 @@ async fn forward_streaming_events(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
