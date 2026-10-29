@@ -80,6 +80,37 @@ impl TwitchConnector {
         *self.inner.creds.lock().await = creds;
     }
 
+    /// Titre actuel de la chaîne du compte connecté.
+    pub async fn channel_title(&self) -> Result<String> {
+        let creds = self.inner.auth(false).await?;
+        let v = self.inner.helix(Method::GET, "channels", &[("broadcaster_id", &creds.user_id)], None).await?;
+        Ok(v["data"][0]["title"].as_str().unwrap_or_default().to_string())
+    }
+
+    /// Met à jour le titre de la chaîne du compte connecté (scope `channel:manage:broadcast`).
+    pub async fn set_channel_title(&self, title: &str) -> Result<()> {
+        let creds = self.inner.auth(false).await?;
+        self.inner
+            .helix(
+                Method::PATCH,
+                "channels",
+                &[("broadcaster_id", &creds.user_id)],
+                Some(serde_json::json!({ "title": title })),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| match e {
+                Error::Other(m) if m.contains("403") || m.contains("401") => Error::Other(format!(
+                    "{m} — déconnectez puis reconnectez Twitch pour accorder la permission de modifier le titre."
+                )),
+                other => other,
+            })
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        self.inner.creds.lock().await.is_some()
+    }
+
     pub fn on_token_refresh(&self, hook: TokenHook) {
         *self.inner.hook.lock().unwrap() = Some(hook);
     }

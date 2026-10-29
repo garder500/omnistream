@@ -152,10 +152,19 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_destination(&self, id: &str) -> Result<Option<StreamDestination>> {
+        Ok(self.list_destinations()?.into_iter().find(|d| d.id == id))
+    }
+
+    pub fn delete_destination(&self, id: &str) -> Result<()> {
+        self.conn.lock().unwrap().execute("DELETE FROM stream_destinations WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     pub fn list_destinations(&self) -> Result<Vec<StreamDestination>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, platform, name, rtmp_url, stream_key, enabled FROM stream_destinations ORDER BY name",
+            "SELECT id, platform, name, rtmp_url, stream_key, enabled FROM stream_destinations ORDER BY rowid",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(StreamDestination {

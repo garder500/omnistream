@@ -37,13 +37,70 @@ export type ModerationKind =
 
 export type ModerationAction = { channel: Channel } & ModerationKind;
 
+export type DestState = "idle" | "waiting_signal" | "connecting" | "live" | "retrying" | "error";
+
+export interface DestinationStatus {
+  id: string;
+  state: DestState;
+  error: string | null;
+  attempt: number;
+  bitrate_kbps: number | null;
+}
+
+/** Destination telle que renvoyée par le backend : la clé de stream n'en sort jamais. */
 export interface StreamDestination {
   id: string;
   platform: Platform;
   name: string;
   rtmp_url: string;
-  stream_key: string;
+  has_key: boolean;
   enabled: boolean;
+  status: DestinationStatus;
+}
+
+export interface DestinationInput {
+  id?: string;
+  platform: Platform;
+  name: string;
+  rtmp_url: string;
+  /** Absent : la clé existante est conservée. */
+  stream_key?: string;
+  enabled: boolean;
+}
+
+export interface IngestStatus {
+  state: "stopped" | "waiting" | "live" | "error";
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  bitrate_kbps: number | null;
+  video_codec: string | null;
+  error: string | null;
+}
+
+export interface FfmpegStatus {
+  found: boolean;
+  path: string | null;
+  version: string | null;
+  message: string | null;
+}
+
+export interface StreamingState {
+  live: boolean;
+  ffmpeg: FfmpegStatus;
+  ingest: { url: string; key: string; port: number; status: IngestStatus };
+  title: string;
+}
+
+export type StreamingEvent =
+  | { type: "ingest"; data: IngestStatus }
+  | { type: "destination"; data: DestinationStatus }
+  | { type: "live"; data: boolean };
+
+export interface TitleResult {
+  platform: string;
+  ok: boolean;
+  message: string;
 }
 
 export type StreamEvent = {

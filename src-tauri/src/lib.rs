@@ -30,6 +30,20 @@ async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::R
     }
 }
 
+/// Relaie l'état de l'ingest et des destinations vers l'interface.
+async fn forward_streaming_events(app: tauri::AppHandle) {
+    let mut rx = app.state::<AppState>().streams.subscribe();
+    loop {
+        match rx.recv().await {
+            Ok(event) => {
+                let _ = app.emit("stream://event", event);
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(_) => break,
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -41,8 +55,11 @@ pub fn run() {
             app.manage(state);
 
             tauri::async_runtime::spawn(forward_chat_events(app.handle().clone(), chat_rx));
+            tauri::async_runtime::spawn(forward_streaming_events(app.handle().clone()));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                // Ouvre l'ingest RTMP local ; une erreur (port occupé) est visible dans l'interface.
+                let _ = handle.state::<AppState>().streams.start_ingest().await;
                 commands::restore_session(&handle.state::<AppState>()).await;
             });
             Ok(())
@@ -61,8 +78,14 @@ pub fn run() {
             commands::stream_infos,
             commands::list_destinations,
             commands::save_destination,
-            commands::start_destination,
-            commands::stop_destination,
+            commands::streaming_state,
+            commands::delete_destination,
+            commands::go_live,
+            commands::stop_live,
+            commands::set_ingest_port,
+            commands::set_ffmpeg_path,
+            commands::set_stream_title,
+            commands::twitch_current_title,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Omnistream");

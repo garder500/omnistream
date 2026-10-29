@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "fr.omnistream.app",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun scripts/fetch-ffmpeg.ts && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun scripts/fetch-ffmpeg.ts && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -32,6 +32,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "externalBin": [
+      "binaries/ffmpeg"
+    ],
+    "resources": {
+      "../docs/ffmpeg.md": "licenses/ffmpeg.md"
+    }
   }
 }

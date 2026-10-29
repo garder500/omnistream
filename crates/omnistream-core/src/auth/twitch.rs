@@ -17,6 +17,7 @@ pub const SCOPES: &[&str] = &[
     "chat:edit",
     "moderator:manage:banned_users",
     "moderator:manage:chat_messages",
+    "channel:manage:broadcast",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

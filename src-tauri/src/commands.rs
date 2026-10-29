@@ -1,8 +1,8 @@
 use omnistream_core::auth::twitch::{self as twitch_auth, DeviceCode};
 use omnistream_core::connectors::TwitchCreds;
-use omnistream_core::domain::{
-    Account, Channel, ModerationAction, ModerationKind, Platform, StreamDestination, StreamInfo,
-};
+use omnistream_core::domain::{Account, Channel, ModerationAction, ModerationKind, Platform, StreamInfo};
+use omnistream_core::ffmpeg::FfmpegStatus;
+use omnistream_core::streaming::{DestinationInput, DestinationView, StreamingState};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -208,28 +208,75 @@ pub async fn stream_infos(state: State<'_, AppState>) -> CmdResult<Vec<StreamInf
 }
 
 #[tauri::command]
-pub fn list_destinations(state: State<'_, AppState>) -> CmdResult<Vec<StreamDestination>> {
-    state.db.list_destinations().map_err(err)
+pub async fn streaming_state(state: State<'_, AppState>) -> CmdResult<StreamingState> {
+    state.streams.state().await.map_err(err)
 }
 
 #[tauri::command]
-pub fn save_destination(state: State<'_, AppState>, destination: StreamDestination) -> CmdResult<()> {
-    state.db.save_destination(&destination).map_err(err)
+pub fn list_destinations(state: State<'_, AppState>) -> CmdResult<Vec<DestinationView>> {
+    state.streams.list_destinations().map_err(err)
 }
 
 #[tauri::command]
-pub async fn start_destination(state: State<'_, AppState>, id: String) -> CmdResult<()> {
-    let dest = state
-        .db
-        .list_destinations()
-        .map_err(err)?
-        .into_iter()
-        .find(|d| d.id == id)
-        .ok_or_else(|| format!("destination inconnue: {id}"))?;
-    state.streams.lock().await.start(&dest).map_err(err)
+pub async fn save_destination(state: State<'_, AppState>, destination: DestinationInput) -> CmdResult<DestinationView> {
+    state.streams.save_destination(destination).await.map_err(err)
 }
 
 #[tauri::command]
-pub async fn stop_destination(state: State<'_, AppState>, id: String) -> CmdResult<()> {
-    state.streams.lock().await.stop(&id).await.map_err(err)
+pub async fn delete_destination(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.streams.delete_destination(&id).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn go_live(state: State<'_, AppState>) -> CmdResult<()> {
+    state.streams.go_live().await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn stop_live(state: State<'_, AppState>) -> CmdResult<()> {
+    state.streams.stop_live().await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_ingest_port(state: State<'_, AppState>, port: u16) -> CmdResult<()> {
+    state.streams.set_ingest_port(port).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn set_ffmpeg_path(state: State<'_, AppState>, path: String) -> CmdResult<FfmpegStatus> {
+    state.streams.set_ffmpeg_path(&path).await.map_err(err)
+}
+
+#[derive(Serialize)]
+pub struct TitleResult {
+    platform: &'static str,
+    ok: bool,
+    message: String,
+}
+
+/// Mémorise le titre et l'applique là où une API le permet (Twitch pour l'instant).
+#[tauri::command]
+pub async fn set_stream_title(state: State<'_, AppState>, title: String) -> CmdResult<Vec<TitleResult>> {
+    let title = title.trim().to_string();
+    state.streams.save_title(&title).map_err(err)?;
+    let mut results = Vec::new();
+    if state.twitch.is_connected().await {
+        let outcome = state.twitch.set_channel_title(&title).await;
+        results.push(TitleResult {
+            platform: "twitch",
+            ok: outcome.is_ok(),
+            message: outcome.map(|_| "Titre mis à jour".to_string()).unwrap_or_else(|e| e.to_string()),
+        });
+    }
+    Ok(results)
+}
+
+/// Titre actuel de la chaîne Twitch connectée, pour préremplir le champ.
+#[tauri::command]
+pub async fn twitch_current_title(state: State<'_, AppState>) -> CmdResult<Option<String>> {
+    if !state.twitch.is_connected().await {
+        return Ok(None);
+    }
+    state.twitch.channel_title().await.map(Some).map_err(err)
 }
