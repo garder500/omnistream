@@ -9,16 +9,18 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::domain::{Channel, ChatMessage, ModerationAction, Platform};
+use crate::domain::{Channel, ChatMessage, ModerationAction, Platform, StreamEvent, StreamInfo};
 use crate::{Error, Result};
 
-pub use twitch::TwitchConnector;
+pub use twitch::{TokenHook, TwitchConnector, TwitchCreds};
 
 /// Événements remontés par un connecteur vers l'agrégateur de chat.
 #[derive(Debug, Clone)]
 pub enum ChatEvent {
     Message(ChatMessage),
+    Event(StreamEvent),
     MessageDeleted { channel_id: String, message_id: String },
+    Connected { channel_id: String },
     Disconnected { channel_id: String },
 }
 
@@ -35,6 +37,11 @@ pub trait ChatConnector: Send + Sync {
 
     /// Applique une action de modération native à la plateforme.
     async fn moderate(&self, action: &ModerationAction) -> Result<()>;
+
+    /// État du direct (titre, spectateurs) ; `None` si la chaîne n'est pas en live.
+    async fn stream_info(&self, _channel: &Channel) -> Result<Option<StreamInfo>> {
+        Ok(None)
+    }
 }
 
 #[derive(Default, Clone)]

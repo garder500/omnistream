@@ -49,9 +49,12 @@ impl fmt::Display for Platform {
 /// Un compte connecté (résultat d'un OAuth).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
+    /// Identifiant plateforme de l'utilisateur (ex. user id Twitch).
     pub id: String,
     pub platform: Platform,
     pub display_name: String,
+    /// Identifiant de connexion en minuscules (ex. login Twitch).
+    pub login: String,
 }
 
 /// Une chaîne sur une plateforme, dont on lit le chat.
@@ -81,6 +84,37 @@ pub struct ChatMessage {
     pub text: String,
     /// Millisecondes depuis l'epoch Unix.
     pub timestamp_ms: i64,
+}
+
+/// Événement de live (abonnement, don de subs, raid...).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamEventKind {
+    Sub { months: u32 },
+    Gift { recipient: Option<String> },
+    Raid { viewers: u32 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamEvent {
+    pub id: String,
+    pub channel_id: String,
+    pub platform: Platform,
+    pub who: String,
+    #[serde(flatten)]
+    pub kind: StreamEventKind,
+    pub message: Option<String>,
+    pub timestamp_ms: i64,
+}
+
+/// État du direct d'une chaîne.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamInfo {
+    pub channel_id: String,
+    pub title: String,
+    pub viewers: u32,
+    /// RFC 3339.
+    pub started_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

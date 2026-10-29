@@ -1,101 +1,180 @@
-import { useState } from "react";
-import { Avatar, Badge, Button, Card, Input, PageHeader } from "../components/ui";
-import { PlatformBadge, PLATFORMS, type PlatformKey } from "../lib/platforms";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { useEffect, useState } from "react";
+import { Badge, Button, Card, Input, Modal, PageHeader } from "../components/ui";
+import { api } from "../lib/api";
+import { PlatformBadge, PLATFORMS, platformKey } from "../lib/platforms";
+import { useStore } from "../lib/store";
+import type { DeviceCode } from "../lib/types";
 
-type Status = "connected" | "expired" | "readonly";
-
-interface AccountCard {
-  platform: PlatformKey;
-  handle: string;
-  status: Status;
-  capabilities: string[];
-}
-
-const ACCOUNTS: AccountCard[] = [
-  { platform: "twitch", handle: "garder_live", status: "connected", capabilities: ["Chat en lecture et écriture", "Modération (suppression, timeout, ban)", "Titre et catégorie du live"] },
-  { platform: "youtube", handle: "Garder Live", status: "connected", capabilities: ["Chat en lecture et écriture", "Modération (suppression, timeout, ban)", "Titre du live"] },
-  { platform: "kick", handle: "garder", status: "expired", capabilities: ["Le jeton a expiré. Le chat Kick est en pause tant que le compte n'est pas reconnecté."] },
-  { platform: "tiktok", handle: "", status: "readonly", capabilities: ["Chat et événements en lecture seule", "Pas d'OAuth : il suffit de saisir votre pseudo", "Diffusion via la clé de stream de Live Studio"] },
-];
-
-const BADGE: Record<Status, { text: string; tone: "success" | "warn" | "info" }> = {
-  connected: { text: "Connecté", tone: "success" },
-  expired: { text: "Reconnexion requise", tone: "warn" },
-  readonly: { text: "Lecture seule", tone: "info" },
-};
+const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e));
 
 export default function Accounts() {
-  const [tiktokHandle, setTiktokHandle] = useState("");
-
   return (
     <div className="flex h-full flex-col gap-5">
-      <PageHeader title="Comptes" subtitle="Connectez vos chaînes. Les jetons restent chiffrés sur votre machine." />
-
+      <PageHeader title="Comptes" subtitle="Connectez vos chaînes et choisissez les chats à suivre." />
       <div className="grid grid-cols-2 gap-5 xl:grid-cols-4">
-        {ACCOUNTS.map((a) => (
-          <Card key={a.platform} className="flex flex-col gap-4 p-5">
-            <div className="flex items-center gap-3">
-              <PlatformBadge platform={a.platform} size={44} />
-              <div className="min-w-0">
-                <div className="text-base font-semibold">{PLATFORMS[a.platform].label}</div>
-                <div className="truncate text-muted">{a.platform === "tiktok" ? tiktokHandle || "pseudo non renseigné" : a.handle}</div>
-              </div>
-            </div>
-            <Badge tone={BADGE[a.status].tone}>{BADGE[a.status].text}</Badge>
-            <ul className="space-y-1 leading-relaxed text-soft">
-              {a.capabilities.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-            {a.platform === "tiktok" && (
-              <Input
-                value={tiktokHandle}
-                onChange={(e) => setTiktokHandle(e.target.value)}
-                placeholder="@votre_pseudo"
-                aria-label="Pseudo TikTok"
-              />
-            )}
-            <div className="mt-auto flex gap-2.5">
-              {a.status === "expired" ? (
-                <Button variant="primary">Reconnecter</Button>
-              ) : a.status === "readonly" ? (
-                <Button variant="primary" disabled={!tiktokHandle}>
-                  Suivre ce pseudo
-                </Button>
-              ) : (
-                <Button>Permissions</Button>
-              )}
-              {a.status !== "readonly" && <Button variant="ghost">{a.status === "expired" ? "Retirer" : "Déconnecter"}</Button>}
-            </div>
-          </Card>
-        ))}
+        <TwitchCard />
+        <ComingSoon platform="youtube" lines={["Chat en lecture et écriture", "Modération depuis Omnistream"]} />
+        <ComingSoon platform="kick" lines={["Chat en lecture et écriture", "Modération depuis Omnistream"]} />
+        <ComingSoon platform="tiktok" lines={["Chat et événements en lecture seule", "Sans OAuth : il suffira de saisir votre pseudo"]} />
       </div>
-
-      <Card className="flex items-center gap-4 border-dashed p-5">
-        <div className="flex-1">
-          <div className="text-base font-semibold">Ajouter un compte</div>
-          <div className="mt-1 text-muted">Une autre chaîne Twitch, un second compte YouTube, ou une plateforme compatible RTMP.</div>
-        </div>
-        <Button variant="primary">
-          Connecter une plateforme
-        </Button>
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="mb-3 text-base font-semibold">Équipe de modération</h2>
-        {[
-          { n: "Kaizen", where: "Twitch, Kick", role: "Modérateur" },
-          { n: "Sarah.b", where: "YouTube", role: "Modératrice" },
-        ].map((m, i) => (
-          <div key={m.n} className={`flex items-center gap-3.5 py-2.5 ${i === 0 ? "border-b border-line" : ""}`}>
-            <Avatar name={m.n} />
-            <span className="flex-1">
-              <b>{m.n}</b> <span className="text-muted">· {m.where}</span>
-            </span>
-            <Badge>{m.role}</Badge>
-          </div>
-        ))}
-      </Card>
+      <Channels />
     </div>
+  );
+}
+
+function TwitchCard() {
+  const { accounts, notify, refreshAccounts } = useStore();
+  const account = accounts.find((a) => platformKey(a.platform) === "twitch");
+  const [clientId, setClientId] = useState("");
+  const [savedId, setSavedId] = useState("");
+  const [code, setCode] = useState<DeviceCode | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.getSettings().then((s) => {
+      setClientId(s.twitch_client_id ?? "");
+      setSavedId(s.twitch_client_id ?? "");
+    });
+  }, []);
+
+  // Le modal se ferme dès que le compte apparaît (événement account://changed).
+  useEffect(() => {
+    if (account) setCode(null);
+  }, [account]);
+
+  const login = async () => {
+    setBusy(true);
+    try {
+      if (clientId.trim() !== savedId) {
+        await api.setTwitchClientId(clientId);
+        setSavedId(clientId.trim());
+      }
+      setCode(await api.twitchLoginStart());
+    } catch (e) {
+      notify(errText(e), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    if (!account) return;
+    try {
+      await api.removeAccount(account.id);
+      await refreshAccounts();
+    } catch (e) {
+      notify(errText(e), true);
+    }
+  };
+
+  return (
+    <Card className="flex flex-col gap-4 p-5">
+      <div className="flex items-center gap-3">
+        <PlatformBadge platform="twitch" size={44} />
+        <div className="min-w-0">
+          <div className="text-base font-semibold">Twitch</div>
+          <div className="truncate text-muted">{account ? account.display_name : "non connecté"}</div>
+        </div>
+      </div>
+      <Badge tone={account ? "success" : "neutral"}>{account ? "Connecté" : "Non connecté"}</Badge>
+      <ul className="space-y-1 leading-relaxed text-soft">
+        <li>Chat en lecture et écriture</li>
+        <li>Suppression, timeout et ban</li>
+        <li>Spectateurs et titre du live</li>
+      </ul>
+      {!account && (
+        <Input
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          placeholder="Client ID de votre application Twitch"
+          aria-label="Client ID Twitch"
+        />
+      )}
+      <div className="mt-auto flex gap-2.5">
+        {account ? (
+          <Button variant="ghost" onClick={logout}>
+            Déconnecter
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={login} disabled={busy || !clientId.trim()}>
+            Se connecter
+          </Button>
+        )}
+      </div>
+      {!account && (
+        <p className="text-xs leading-relaxed text-muted">
+          Créez une application sur dev.twitch.tv/console avec le type de client « Public », puis collez son Client ID. Aucun secret n'est nécessaire.
+        </p>
+      )}
+
+      <Modal open={code !== null} title="Autoriser Omnistream sur Twitch" onClose={() => setCode(null)}>
+        {code && (
+          <div className="flex flex-col gap-4">
+            <p className="text-soft">Ouvrez la page d'activation de Twitch et saisissez ce code :</p>
+            <div className="rounded-control bg-ink py-4 text-center font-mono text-3xl font-bold tracking-widest">{code.user_code}</div>
+            <Button variant="primary" onClick={() => openUrl(code.verification_uri).catch((e) => notify(errText(e), true))}>
+              Ouvrir twitch.tv/activate
+            </Button>
+            <p className="text-xs text-muted">En attente de votre validation… cette fenêtre se fermera toute seule.</p>
+          </div>
+        )}
+      </Modal>
+    </Card>
+  );
+}
+
+function ComingSoon({ platform, lines }: { platform: "youtube" | "kick" | "tiktok"; lines: string[] }) {
+  return (
+    <Card className="flex flex-col gap-4 p-5 opacity-70">
+      <div className="flex items-center gap-3">
+        <PlatformBadge platform={platform} size={44} />
+        <div className="text-base font-semibold">{PLATFORMS[platform].label}</div>
+      </div>
+      <Badge tone="info">Bientôt disponible</Badge>
+      <ul className="space-y-1 leading-relaxed text-soft">
+        {lines.map((l) => (
+          <li key={l}>{l}</li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function Channels() {
+  const { channels, connected, addChannel, removeChannel } = useStore();
+  const [name, setName] = useState("");
+
+  return (
+    <Card className="p-5">
+      <h2 className="mb-1 text-base font-semibold">Chaînes suivies</h2>
+      <p className="mb-4 text-muted">
+        Le chat de ces chaînes alimente le multi-chat. Sans compte connecté, il est en lecture seule ; avec un compte, vous pouvez écrire et modérer.
+      </p>
+      <form
+        className="mb-4 flex gap-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await addChannel("twitch", name);
+          setName("");
+        }}
+      >
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom de la chaîne Twitch (ex. garder_live)" aria-label="Chaîne Twitch" className="flex-1" />
+        <Button variant="primary" type="submit" disabled={!name.trim()}>
+          Suivre
+        </Button>
+      </form>
+      {channels.length === 0 && <p className="text-muted">Aucune chaîne suivie pour l'instant.</p>}
+      {channels.map((c) => (
+        <div key={c.id} className="flex items-center gap-3.5 border-t border-line py-3">
+          <PlatformBadge platform={platformKey(c.platform)} size={30} />
+          <span className="flex-1 font-semibold">{c.display_name}</span>
+          <Badge tone={connected[c.id] ? "success" : "warn"}>{connected[c.id] ? "Connecté" : "Connexion…"}</Badge>
+          <Button variant="ghost" onClick={() => removeChannel(c.id)}>
+            Retirer
+          </Button>
+        </div>
+      ))}
+    </Card>
   );
 }

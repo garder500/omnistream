@@ -1,27 +1,44 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use omnistream_core::connectors::{ConnectorRegistry, TwitchConnector};
+use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
 use omnistream_core::streaming::{StreamManager, DEFAULT_INGEST_URL};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
 pub struct AppState {
-    pub db: Database,
-    pub streams: Mutex<StreamManager>,
-    #[allow(dead_code)] // branché sur l'UI de modération dans une prochaine étape
+    pub db: Arc<Database>,
+    pub twitch: TwitchConnector,
+    pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
+    pub streams: Mutex<StreamManager>,
+    pub chat_tx: mpsc::Sender<ChatEvent>,
 }
 
 impl AppState {
-    pub fn new(db_path: PathBuf) -> omnistream_core::Result<Self> {
+    /// Retourne aussi le récepteur des événements de chat, à relayer vers l'interface.
+    pub fn new(db_path: PathBuf) -> omnistream_core::Result<(Self, mpsc::Receiver<ChatEvent>)> {
+        let db = Arc::new(Database::open(db_path)?);
+        let twitch = TwitchConnector::new();
+        let hook_db = db.clone();
+        twitch.on_token_refresh(Arc::new(move |user_id, tokens| {
+            if let Err(e) = hook_db.save_tokens(user_id, tokens) {
+                eprintln!("impossible d'enregistrer les jetons renouvelés: {e}");
+            }
+        }));
+
         let mut connectors = ConnectorRegistry::new();
-        connectors.register(Arc::new(TwitchConnector));
-        Ok(Self {
-            db: Database::open(db_path)?,
+        connectors.register(Arc::new(twitch.clone()));
+        let (chat_tx, chat_rx) = mpsc::channel(1024);
+        let state = Self {
+            db,
+            twitch,
+            moderation: ModerationEngine::new(connectors.clone()),
+            connectors,
             streams: Mutex::new(StreamManager::new("ffmpeg", DEFAULT_INGEST_URL)),
-            moderation: ModerationEngine::new(connectors),
-        })
+            chat_tx,
+        };
+        Ok((state, chat_rx))
     }
 }

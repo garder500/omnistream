@@ -20,7 +20,7 @@ src-tauri                Couche Tauri : état de l'app et commandes IPC
 src                      UI React : Dashboard, Multi-chat, Moderation, Stream manager, Accounts
 ```
 
-Ajouter une plateforme : variante dans `Platform` (ou `Other`), un `ChatConnector`, un `AuthProvider`, puis l'enregistrer dans `src-tauri/src/state.rs`.
+Ajouter une plateforme : variante dans `Platform` (ou `Other`), un `ChatConnector` (et son module d'authentification dans `auth/`), puis l'enregistrer dans `src-tauri/src/state.rs`.
 
 ## Développement
 
@@ -31,3 +31,11 @@ bun install
 bun run tauri dev
 cargo test -p omnistream-core   # tests du cœur, sans dépendances système
 ```
+
+## Connexion Twitch
+
+1. Sur [dev.twitch.tv/console](https://dev.twitch.tv/console), créez une application avec le type de client **Public** (aucun secret n'est utilisé) et copiez son Client ID.
+2. Dans Omnistream, page **Comptes** : collez le Client ID, cliquez sur « Se connecter » et saisissez le code affiché sur twitch.tv/activate.
+3. Ajoutez des chaînes à suivre : le chat est lu même sans compte, l'écriture et la modération nécessitent la connexion.
+
+Le Client ID peut aussi être fourni à la compilation via la variable `OMNISTREAM_TWITCH_CLIENT_ID`.

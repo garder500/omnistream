@@ -6,7 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Moderation from "./pages/Moderation";
 import MultiChat from "./pages/MultiChat";
 import StreamManager from "./pages/StreamManager";
-import { FLAGGED } from "./lib/mock";
+import { flaggedQueue, StoreProvider, useStore } from "./lib/store";
 
 type SectionId = "dashboard" | "chat" | "moderation" | "stream" | "accounts";
 
@@ -19,6 +19,15 @@ const SECTIONS: { id: SectionId; label: string; icon: string; Component: (p: { g
 ];
 
 export default function App() {
+  return (
+    <StoreProvider>
+      <Shell />
+    </StoreProvider>
+  );
+}
+
+function Shell() {
+  const { messages, toasts } = useStore();
   const [current, setCurrent] = useState<SectionId>("dashboard");
   const Active = SECTIONS.find((s) => s.id === current)!.Component;
 
@@ -34,7 +43,7 @@ export default function App() {
             active={id === current}
             icon={icon}
             label={label}
-            count={id === "moderation" ? FLAGGED.length : undefined}
+            count={id === "moderation" ? flaggedQueue(messages).length || undefined : undefined}
             onClick={() => setCurrent(id)}
           />
         ))}
@@ -42,6 +51,13 @@ export default function App() {
       <main className="min-w-0 flex-1 overflow-auto p-7">
         <Active go={setCurrent} />
       </main>
+      <div className="pointer-events-none fixed bottom-5 right-5 flex w-96 flex-col gap-2" role="status">
+        {toasts.map((t) => (
+          <div key={t.id} className={`rounded-control border px-4 py-3 shadow-xl ${t.error ? "border-danger-line bg-danger-soft text-danger-text" : "border-line bg-panel"}`}>
+            {t.text}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

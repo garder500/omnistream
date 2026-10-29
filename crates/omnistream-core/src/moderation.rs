@@ -31,6 +31,32 @@ impl ModerationEngine {
     }
 }
 
+/// Détection simple (sans IA) des messages à relire : liens, majuscules, répétitions.
+pub fn flag_reason(text: &str) -> Option<&'static str> {
+    let lower = text.to_lowercase();
+    if ["http://", "https://", "www.", "bit.ly/", ".ly/"].iter().any(|p| lower.contains(p)) {
+        return Some("Lien suspect");
+    }
+    let letters: Vec<char> = text.chars().filter(|c| c.is_alphabetic()).collect();
+    if letters.len() >= 12 && letters.iter().filter(|c| c.is_uppercase()).count() * 10 >= letters.len() * 8 {
+        return Some("Majuscules");
+    }
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    if words.len() >= 4 && words.iter().all(|w| *w == words[0]) {
+        return Some("Répétition");
+    }
+    let mut run = 1;
+    let mut prev = None;
+    for c in text.chars() {
+        run = if Some(c) == prev { run + 1 } else { 1 };
+        if run >= 15 {
+            return Some("Répétition");
+        }
+        prev = Some(c);
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -90,5 +116,15 @@ mod tests {
 
         let err = engine.apply(&action(Platform::Twitch)).await.unwrap_err();
         assert!(matches!(err, Error::UnknownPlatform(Platform::Twitch)));
+    }
+
+    #[test]
+    fn flags_spam_but_not_normal_chat() {
+        assert_eq!(flag_reason("achetez des abonnés sur bit.ly/xxxx"), Some("Lien suspect"));
+        assert_eq!(flag_reason("REGARDEZ MA CHAINE REGARDEZ MA CHAINE"), Some("Majuscules"));
+        assert_eq!(flag_reason("spam spam spam spam"), Some("Répétition"));
+        assert_eq!(flag_reason("aaaaaaaaaaaaaaaaaaaa"), Some("Répétition"));
+        assert_eq!(flag_reason("GG pour le boss !!"), None);
+        assert_eq!(flag_reason("LOL"), None);
     }
 }
