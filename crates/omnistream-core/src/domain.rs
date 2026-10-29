@@ -12,6 +12,7 @@ pub enum Platform {
     Youtube,
     Kick,
     Tiktok,
+    Trovo,
     /// Plateforme tierce (ex. RTMP générique) identifiée par un slug.
     Other(String),
 }
@@ -23,6 +24,7 @@ impl Platform {
             Platform::Youtube => "youtube",
             Platform::Kick => "kick",
             Platform::Tiktok => "tiktok",
+            Platform::Trovo => "trovo",
             Platform::Other(slug) => slug,
         }
     }
@@ -35,6 +37,7 @@ impl From<&str> for Platform {
             "youtube" => Platform::Youtube,
             "kick" => Platform::Kick,
             "tiktok" => Platform::Tiktok,
+            "trovo" => Platform::Trovo,
             other => Platform::Other(other.to_string()),
         }
     }

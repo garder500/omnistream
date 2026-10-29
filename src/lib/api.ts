@@ -11,6 +11,7 @@ import type {
   Settings,
   DestinationInput,
   FfmpegStatus,
+  TrovoSettings,
   Category,
   PlatformUpdateResult,
   StreamDestination,
@@ -27,6 +28,9 @@ export const api = {
 
   listAccounts: () => invoke<Account[]>("list_accounts"),
   twitchLoginStart: () => invoke<DeviceCode>("twitch_login_start"),
+  getTrovoSettings: () => invoke<TrovoSettings>("get_trovo_settings"),
+  setTrovoApp: (clientId: string, clientSecret: string) => invoke<void>("set_trovo_app", { clientId, clientSecret }),
+  trovoLoginStart: () => invoke<string>("trovo_login_start"),
   removeAccount: (id: string) => invoke<void>("remove_account", { id }),
 
   listChannels: () => invoke<Channel[]>("list_channels"),
