@@ -24,10 +24,10 @@ Ajouter une plateforme : variante dans `Platform` (ou `Other`), un `ChatConnecto
 
 ## Développement
 
-Prérequis : Node 20+, Rust stable, [dépendances système Tauri](https://tauri.app/start/prerequisites/), FFmpeg dans le `PATH`.
+Prérequis : [Bun](https://bun.sh) 1.2+, Rust stable, [dépendances système Tauri](https://tauri.app/start/prerequisites/), FFmpeg dans le `PATH`.
 
 ```bash
-npm install
-npm run tauri dev
+bun install
+bun run tauri dev
 cargo test -p omnistream-core   # tests du cœur, sans dépendances système
 ```
