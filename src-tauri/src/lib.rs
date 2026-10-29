@@ -2,7 +2,6 @@ mod commands;
 mod state;
 
 use omnistream_core::connectors::ChatEvent;
-use omnistream_core::moderation::flag_reason;
 use serde_json::json;
 use tauri::{Emitter, Manager};
 
@@ -13,8 +12,12 @@ async fn forward_chat_events(app: tauri::AppHandle, mut rx: tokio::sync::mpsc::R
     while let Some(event) = rx.recv().await {
         let _ = match event {
             ChatEvent::Message(m) => {
-                let flag = flag_reason(&m.text);
-                app.emit("chat://message", json!({ "message": m, "flag": flag }))
+                let verdict = app.state::<AppState>().automod.lock().unwrap().evaluate(&m);
+                if !verdict.moderation_kinds(&m).is_empty() {
+                    let (handle, msg, v) = (app.clone(), m.clone(), verdict.clone());
+                    tauri::async_runtime::spawn(async move { commands::apply_automod(&handle, &msg, &v).await });
+                }
+                app.emit("chat://message", json!({ "message": m, "flag": verdict.reason(), "score": verdict.score }))
             }
             ChatEvent::Event(e) => app.emit("chat://event", e),
             ChatEvent::MessageDeleted { channel_id, message_id } => {
@@ -75,6 +78,10 @@ pub fn run() {
             commands::remove_channel,
             commands::send_message,
             commands::moderate,
+            commands::list_automod_rules,
+            commands::save_automod_rule,
+            commands::delete_automod_rule,
+            commands::test_automod,
             commands::stream_infos,
             commands::list_destinations,
             commands::save_destination,

@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  AutomodRule,
+  AutomodVerdict,
   Channel,
   DeviceCode,
   ModerationKind,
@@ -26,6 +28,10 @@ export const api = {
   removeChannel: (channelId: string) => invoke<void>("remove_channel", { channelId }),
   sendMessage: (channelIds: string[], text: string) => invoke<void>("send_message", { channelIds, text }),
   moderate: (channelId: string, kind: ModerationKind) => invoke<void>("moderate", { channelId, kind }),
+  listAutomodRules: () => invoke<AutomodRule[]>("list_automod_rules"),
+  saveAutomodRule: (rule: AutomodRule) => invoke<void>("save_automod_rule", { rule }),
+  deleteAutomodRule: (id: string) => invoke<void>("delete_automod_rule", { id }),
+  testAutomod: (text: string, platform: string) => invoke<AutomodVerdict>("test_automod", { text, platform }),
   streamInfos: () => invoke<StreamInfo[]>("stream_infos"),
 
   streamingState: () => invoke<StreamingState>("streaming_state"),
