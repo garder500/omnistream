@@ -2,7 +2,8 @@ use omnistream_core::auth::twitch::{self as twitch_auth, DeviceCode};
 use omnistream_core::automod::{validate_rule, Rule, Verdict};
 use omnistream_core::connectors::TwitchCreds;
 use omnistream_core::domain::{
-    Account, Channel, ChatAuthor, ChatMessage, ModerationAction, ModerationKind, Platform, StreamInfo,
+    Account, Category, Channel, ChatAuthor, ChatMessage, ModerationAction, ModerationKind,
+    Platform, PlatformUpdateResult, StreamInfo, StreamInfoUpdate, StreamPreset,
 };
 use omnistream_core::ffmpeg::FfmpegStatus;
 use omnistream_core::streaming::{DestinationInput, DestinationView, StreamingState};
@@ -32,11 +33,19 @@ fn twitch_client_id(state: &AppState) -> Option<String> {
 /// Recharge le compte Twitch enregistré (s'il y en a un) puis reconnecte les chaînes suivies.
 pub async fn restore_session(state: &AppState) {
     if let (Some(client_id), Ok(accounts)) = (twitch_client_id(state), state.db.list_accounts()) {
-        if let Some(acc) = accounts.into_iter().find(|a| a.platform == Platform::Twitch) {
+        if let Some(acc) = accounts
+            .into_iter()
+            .find(|a| a.platform == Platform::Twitch)
+        {
             if let Ok(Some(tokens)) = state.db.load_tokens(&acc.id) {
                 state
                     .twitch
-                    .set_credentials(Some(TwitchCreds { client_id, user_id: acc.id, login: acc.login, tokens }))
+                    .set_credentials(Some(TwitchCreds {
+                        client_id,
+                        user_id: acc.id,
+                        login: acc.login,
+                        tokens,
+                    }))
                     .await;
             }
         }
@@ -59,12 +68,17 @@ pub struct Settings {
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Settings {
-    Settings { twitch_client_id: twitch_client_id(&state) }
+    Settings {
+        twitch_client_id: twitch_client_id(&state),
+    }
 }
 
 #[tauri::command]
 pub fn set_twitch_client_id(state: State<'_, AppState>, client_id: String) -> CmdResult<()> {
-    state.db.set_setting(TWITCH_CLIENT_ID_KEY, client_id.trim()).map_err(err)
+    state
+        .db
+        .set_setting(TWITCH_CLIENT_ID_KEY, client_id.trim())
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -75,11 +89,16 @@ pub fn list_accounts(state: State<'_, AppState>) -> CmdResult<Vec<Account>> {
 /// Démarre la connexion Twitch : renvoie le code à saisir sur twitch.tv/activate,
 /// puis attend la validation en arrière-plan (événements `account://changed` / `account://error`).
 #[tauri::command]
-pub async fn twitch_login_start(app: AppHandle, state: State<'_, AppState>) -> CmdResult<DeviceCode> {
+pub async fn twitch_login_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<DeviceCode> {
     let client_id = twitch_client_id(&state)
         .ok_or("Renseignez d'abord le Client ID de votre application Twitch (type « Public »).")?;
     let http = state.twitch.http().clone();
-    let code = twitch_auth::start_device_flow(&http, &client_id).await.map_err(err)?;
+    let code = twitch_auth::start_device_flow(&http, &client_id)
+        .await
+        .map_err(err)?;
 
     let pending = code.clone();
     tauri::async_runtime::spawn(async move {
@@ -97,7 +116,12 @@ pub async fn twitch_login_start(app: AppHandle, state: State<'_, AppState>) -> C
             state.db.save_tokens(&account.id, &tokens)?;
             state
                 .twitch
-                .set_credentials(Some(TwitchCreds { client_id, user_id: user.id, login: user.login, tokens }))
+                .set_credentials(Some(TwitchCreds {
+                    client_id,
+                    user_id: user.id,
+                    login: user.login,
+                    tokens,
+                }))
                 .await;
             Ok(account)
         }
@@ -117,7 +141,11 @@ pub async fn twitch_login_start(app: AppHandle, state: State<'_, AppState>) -> C
 }
 
 #[tauri::command]
-pub async fn remove_account(app: AppHandle, state: State<'_, AppState>, id: String) -> CmdResult<()> {
+pub async fn remove_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> CmdResult<()> {
     state.db.delete_account(&id).map_err(err)?;
     state.twitch.set_credentials(None).await;
     reconnect_channels(&state).await;
@@ -131,7 +159,11 @@ pub fn list_channels(state: State<'_, AppState>) -> CmdResult<Vec<Channel>> {
 }
 
 #[tauri::command]
-pub async fn add_channel(state: State<'_, AppState>, platform: String, name: String) -> CmdResult<Channel> {
+pub async fn add_channel(
+    state: State<'_, AppState>,
+    platform: String,
+    name: String,
+) -> CmdResult<Channel> {
     let platform = Platform::from(platform.as_str());
     if platform != Platform::Twitch {
         return Err(format!("{platform} n'est pas encore pris en charge."));
@@ -148,7 +180,10 @@ pub async fn add_channel(state: State<'_, AppState>, platform: String, name: Str
     };
     state.db.save_channel(&channel).map_err(err)?;
     let connector = state.connectors.get(&channel.platform).map_err(err)?;
-    connector.connect(&channel, state.chat_tx.clone()).await.map_err(err)?;
+    connector
+        .connect(&channel, state.chat_tx.clone())
+        .await
+        .map_err(err)?;
     Ok(channel)
 }
 
@@ -172,7 +207,11 @@ pub async fn remove_channel(state: State<'_, AppState>, channel_id: String) -> C
 }
 
 #[tauri::command]
-pub async fn send_message(state: State<'_, AppState>, channel_ids: Vec<String>, text: String) -> CmdResult<()> {
+pub async fn send_message(
+    state: State<'_, AppState>,
+    channel_ids: Vec<String>,
+    text: String,
+) -> CmdResult<()> {
     let mut failures = Vec::new();
     for id in channel_ids {
         let channel = find_channel(&state, &id)?;
@@ -192,9 +231,17 @@ pub async fn send_message(state: State<'_, AppState>, channel_ids: Vec<String>, 
 }
 
 #[tauri::command]
-pub async fn moderate(state: State<'_, AppState>, channel_id: String, kind: ModerationKind) -> CmdResult<()> {
+pub async fn moderate(
+    state: State<'_, AppState>,
+    channel_id: String,
+    kind: ModerationKind,
+) -> CmdResult<()> {
     let channel = find_channel(&state, &channel_id)?;
-    state.moderation.apply(&ModerationAction { channel, kind }).await.map_err(err)
+    state
+        .moderation
+        .apply(&ModerationAction { channel, kind })
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -221,8 +268,15 @@ pub fn list_destinations(state: State<'_, AppState>) -> CmdResult<Vec<Destinatio
 }
 
 #[tauri::command]
-pub async fn save_destination(state: State<'_, AppState>, destination: DestinationInput) -> CmdResult<DestinationView> {
-    state.streams.save_destination(destination).await.map_err(err)
+pub async fn save_destination(
+    state: State<'_, AppState>,
+    destination: DestinationInput,
+) -> CmdResult<DestinationView> {
+    state
+        .streams
+        .save_destination(destination)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -260,7 +314,10 @@ pub struct TitleResult {
 
 /// Mémorise le titre et l'applique là où une API le permet (Twitch pour l'instant).
 #[tauri::command]
-pub async fn set_stream_title(state: State<'_, AppState>, title: String) -> CmdResult<Vec<TitleResult>> {
+pub async fn set_stream_title(
+    state: State<'_, AppState>,
+    title: String,
+) -> CmdResult<Vec<TitleResult>> {
     let title = title.trim().to_string();
     state.streams.save_title(&title).map_err(err)?;
     let mut results = Vec::new();
@@ -269,7 +326,9 @@ pub async fn set_stream_title(state: State<'_, AppState>, title: String) -> CmdR
         results.push(TitleResult {
             platform: "twitch",
             ok: outcome.is_ok(),
-            message: outcome.map(|_| "Titre mis à jour".to_string()).unwrap_or_else(|e| e.to_string()),
+            message: outcome
+                .map(|_| "Titre mis à jour".to_string())
+                .unwrap_or_else(|e| e.to_string()),
         });
     }
     Ok(results)
@@ -287,10 +346,15 @@ pub async fn twitch_current_title(state: State<'_, AppState>) -> CmdResult<Optio
 /// Applique les actions d'automod (timeout, suppression) sur la chaîne du message.
 pub async fn apply_automod(app: &AppHandle, msg: &ChatMessage, verdict: &Verdict) {
     let state = app.state::<AppState>();
-    let Ok(channel) = find_channel(&state, &msg.channel_id) else { return };
+    let Ok(channel) = find_channel(&state, &msg.channel_id) else {
+        return;
+    };
     for result in state.moderation.apply_verdict(&channel, msg, verdict).await {
         if let Err(e) = result {
-            eprintln!("automod: action impossible sur {}: {e}", channel.display_name);
+            eprintln!(
+                "automod: action impossible sur {}: {e}",
+                channel.display_name
+            );
         }
     }
 }
@@ -321,14 +385,94 @@ pub fn delete_automod_rule(state: State<'_, AppState>, id: String) -> CmdResult<
 
 /// Aperçu : quelles règles se déclencheraient sur ce texte (sans effet).
 #[tauri::command]
-pub fn test_automod(state: State<'_, AppState>, text: String, platform: Platform) -> CmdResult<Verdict> {
+pub fn test_automod(
+    state: State<'_, AppState>,
+    text: String,
+    platform: Platform,
+) -> CmdResult<Verdict> {
     let msg = ChatMessage {
         id: "test".into(),
         channel_id: "test".into(),
         platform,
-        author: ChatAuthor { external_id: "test".into(), display_name: "test".into(), is_moderator: false, is_subscriber: false },
+        author: ChatAuthor {
+            external_id: "test".into(),
+            display_name: "test".into(),
+            is_moderator: false,
+            is_subscriber: false,
+        },
         text,
         timestamp_ms: 0,
+        emotes: vec![],
+        badges: vec![],
+        room_id: None,
     };
     Ok(state.automod.lock().unwrap().preview(&msg))
+}
+
+/// Applique titre / catégorie / tags aux chaînes choisies (toutes si `channel_ids` est vide) ;
+/// renvoie un statut par chaîne, un échec n'annule pas les autres.
+#[tauri::command]
+pub async fn update_stream_info(
+    state: State<'_, AppState>,
+    channel_ids: Vec<String>,
+    update: StreamInfoUpdate,
+) -> CmdResult<Vec<PlatformUpdateResult>> {
+    if update.is_empty() {
+        return Err("Rien à modifier.".into());
+    }
+    let all = state.db.list_channels().map_err(err)?;
+    let channels: Vec<Channel> = if channel_ids.is_empty() {
+        all
+    } else {
+        all.into_iter()
+            .filter(|c| channel_ids.contains(&c.id))
+            .collect()
+    };
+    if channels.is_empty() {
+        return Err("Aucune chaîne sélectionnée.".into());
+    }
+    Ok(state
+        .connectors
+        .update_stream_info(&channels, &update)
+        .await)
+}
+
+#[tauri::command]
+pub async fn search_categories(
+    state: State<'_, AppState>,
+    query: String,
+) -> CmdResult<Vec<Category>> {
+    let mut found: Vec<Category> = Vec::new();
+    for platform in state.connectors.platforms() {
+        if let Ok(connector) = state.connectors.get(&platform) {
+            for cat in connector
+                .search_categories(&query)
+                .await
+                .unwrap_or_default()
+            {
+                if !found.iter().any(|c| c.name.eq_ignore_ascii_case(&cat.name)) {
+                    found.push(cat);
+                }
+            }
+        }
+    }
+    Ok(found)
+}
+
+#[tauri::command]
+pub fn list_presets(state: State<'_, AppState>) -> CmdResult<Vec<StreamPreset>> {
+    state.db.list_presets().map_err(err)
+}
+
+#[tauri::command]
+pub fn save_preset(state: State<'_, AppState>, preset: StreamPreset) -> CmdResult<()> {
+    if preset.name.trim().is_empty() {
+        return Err("Donnez un nom au préréglage.".into());
+    }
+    state.db.save_preset(&preset).map_err(err)
+}
+
+#[tauri::command]
+pub fn delete_preset(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.db.delete_preset(&id).map_err(err)
 }

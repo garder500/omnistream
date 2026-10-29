@@ -15,6 +15,23 @@ export interface Channel {
   display_name: string;
 }
 
+export type EmoteProvider = "twitch" | "seven_tv" | "bttv" | "ffz";
+
+/** Indices en caractères Unicode (fin exclue): utiliser Array.from(text). */
+export interface EmoteSpan {
+  start: number;
+  end: number;
+  name: string;
+  url: string;
+  provider: EmoteProvider;
+  zero_width?: boolean;
+}
+
+export interface ChatBadge {
+  set_id: string;
+  version: string;
+}
+
 export interface ChatMessage {
   id: string;
   channel_id: string;
@@ -27,6 +44,8 @@ export interface ChatMessage {
   };
   text: string;
   timestamp_ms: number;
+  emotes?: EmoteSpan[];
+  badges?: ChatBadge[];
 }
 
 export type ModerationKind =
@@ -117,6 +136,32 @@ export interface StreamInfo {
   title: string;
   viewers: number;
   started_at: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+}
+
+export interface StreamInfoUpdate {
+  title?: string | null;
+  category?: string | null;
+  tags?: string[] | null;
+}
+
+export interface PlatformUpdateResult {
+  channel_id: string;
+  platform: Platform;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface StreamPreset {
+  id: string;
+  name: string;
+  title: string;
+  category: string;
+  tags: string[];
 }
 
 export interface DeviceCode {

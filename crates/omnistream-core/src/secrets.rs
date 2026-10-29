@@ -22,11 +22,17 @@ fn keyring_err(e: keyring::Error) -> Error {
 
 impl SecretStore for KeyringStore {
     fn set(&self, name: &str, value: &str) -> Result<()> {
-        keyring::Entry::new(SERVICE, name).map_err(keyring_err)?.set_password(value).map_err(keyring_err)
+        keyring::Entry::new(SERVICE, name)
+            .map_err(keyring_err)?
+            .set_password(value)
+            .map_err(keyring_err)
     }
 
     fn get(&self, name: &str) -> Result<Option<String>> {
-        match keyring::Entry::new(SERVICE, name).map_err(keyring_err)?.get_password() {
+        match keyring::Entry::new(SERVICE, name)
+            .map_err(keyring_err)?
+            .get_password()
+        {
             Ok(v) => Ok(Some(v)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(keyring_err(e)),
@@ -34,7 +40,10 @@ impl SecretStore for KeyringStore {
     }
 
     fn delete(&self, name: &str) -> Result<()> {
-        match keyring::Entry::new(SERVICE, name).map_err(keyring_err)?.delete_credential() {
+        match keyring::Entry::new(SERVICE, name)
+            .map_err(keyring_err)?
+            .delete_credential()
+        {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(keyring_err(e)),
         }

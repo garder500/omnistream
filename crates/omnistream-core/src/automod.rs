@@ -20,7 +20,10 @@ pub enum RuleKind {
     /// Tout lien dont le domaine n'est pas dans la liste blanche.
     Links { allowed_domains: Vec<String> },
     /// Trop de majuscules.
-    Caps { min_letters: u32, ratio_percent: u32 },
+    Caps {
+        min_letters: u32,
+        ratio_percent: u32,
+    },
     /// Mot répété ou caractère étiré.
     Repeat { min_words: u32, char_run: u32 },
     /// Même auteur (normalisé), même texte, sur plusieurs chaînes dans une fenêtre.
@@ -74,7 +77,13 @@ impl Verdict {
         if self.matches.is_empty() {
             return None;
         }
-        Some(self.matches.iter().map(|m| m.name.as_str()).collect::<Vec<_>>().join(" + "))
+        Some(
+            self.matches
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect::<Vec<_>>()
+                .join(" + "),
+        )
     }
 
     pub fn delete(&self) -> bool {
@@ -96,10 +105,15 @@ impl Verdict {
     pub fn moderation_kinds(&self, msg: &ChatMessage) -> Vec<ModerationKind> {
         let mut kinds = Vec::new();
         if let Some(seconds) = self.timeout_secs() {
-            kinds.push(ModerationKind::Timeout { user_id: msg.author.external_id.clone(), seconds });
+            kinds.push(ModerationKind::Timeout {
+                user_id: msg.author.external_id.clone(),
+                seconds,
+            });
         }
         if self.delete() {
-            kinds.push(ModerationKind::DeleteMessage { message_id: msg.id.clone() });
+            kinds.push(ModerationKind::DeleteMessage {
+                message_id: msg.id.clone(),
+            });
         }
         kinds
     }
@@ -155,10 +169,20 @@ pub fn extract_domains(text: &str) -> Vec<String> {
         .find_iter(text)
         .map(|m| {
             let s = m.as_str().to_lowercase();
-            let s = s.trim_start_matches("https://").trim_start_matches("http://");
+            let s = s
+                .trim_start_matches("https://")
+                .trim_start_matches("http://");
             let authority = s.split(['/', '?', '#']).next().unwrap_or("");
-            let host = authority.rsplit('@').next().unwrap_or("").split(':').next().unwrap_or("");
-            host.trim_start_matches("www.").trim_end_matches('.').to_string()
+            let host = authority
+                .rsplit('@')
+                .next()
+                .unwrap_or("")
+                .split(':')
+                .next()
+                .unwrap_or("");
+            host.trim_start_matches("www.")
+                .trim_end_matches('.')
+                .to_string()
         })
         .filter(|h| !h.is_empty())
         .collect()
@@ -183,25 +207,44 @@ pub fn validate_rule(rule: &Rule) -> Result<()> {
     match &rule.kind {
         RuleKind::Regex { pattern } => {
             if compile_regex(pattern)?.is_match("") {
-                return Err(Error::Other("l'expression régulière correspond au texte vide".into()));
+                return Err(Error::Other(
+                    "l'expression régulière correspond au texte vide".into(),
+                ));
             }
         }
         RuleKind::BannedWords { words } if words.iter().all(|w| word_text(w).trim().is_empty()) => {
             return Err(Error::Other("ajoutez au moins un mot banni".into()));
         }
-        RuleKind::Caps { ratio_percent, min_letters } if *ratio_percent == 0 || *ratio_percent > 100 || *min_letters == 0 => {
-            return Err(Error::Other("majuscules : ratio entre 1 et 100 % et au moins 1 lettre".into()));
+        RuleKind::Caps {
+            ratio_percent,
+            min_letters,
+        } if *ratio_percent == 0 || *ratio_percent > 100 || *min_letters == 0 => {
+            return Err(Error::Other(
+                "majuscules : ratio entre 1 et 100 % et au moins 1 lettre".into(),
+            ));
         }
-        RuleKind::Repeat { min_words: 0, char_run: 0 } => {
-            return Err(Error::Other("répétitions : renseignez au moins un seuil".into()));
+        RuleKind::Repeat {
+            min_words: 0,
+            char_run: 0,
+        } => {
+            return Err(Error::Other(
+                "répétitions : renseignez au moins un seuil".into(),
+            ));
         }
-        RuleKind::CrossPlatformSpam { min_channels, window_secs } if *min_channels < 2 || *window_secs == 0 => {
-            return Err(Error::Other("le spam inter-plateformes demande au moins 2 chaînes et une fenêtre > 0".into()));
+        RuleKind::CrossPlatformSpam {
+            min_channels,
+            window_secs,
+        } if *min_channels < 2 || *window_secs == 0 => {
+            return Err(Error::Other(
+                "le spam inter-plateformes demande au moins 2 chaînes et une fenêtre > 0".into(),
+            ));
         }
         _ => {}
     }
     if let RuleAction::Timeout { seconds: 0 } = rule.action {
-        return Err(Error::Other("la durée du timeout doit être supérieure à 0".into()));
+        return Err(Error::Other(
+            "la durée du timeout doit être supérieure à 0".into(),
+        ));
     }
     Ok(())
 }
@@ -260,9 +303,11 @@ impl AutoMod {
                     _ => None,
                 };
                 let words = match &rule.kind {
-                    RuleKind::BannedWords { words } => {
-                        words.iter().map(|w| word_text(w)).filter(|w| !w.trim().is_empty()).collect()
-                    }
+                    RuleKind::BannedWords { words } => words
+                        .iter()
+                        .map(|w| word_text(w))
+                        .filter(|w| !w.trim().is_empty())
+                        .collect(),
                     _ => Vec::new(),
                 };
                 Compiled { rule, regex, words }
@@ -273,7 +318,9 @@ impl AutoMod {
             .iter()
             .filter(|c| c.rule.enabled)
             .filter_map(|c| match c.rule.kind {
-                RuleKind::CrossPlatformSpam { window_secs, .. } => Some(i64::from(window_secs) * 1000),
+                RuleKind::CrossPlatformSpam { window_secs, .. } => {
+                    Some(i64::from(window_secs) * 1000)
+                }
                 _ => None,
             })
             .max()
@@ -292,7 +339,11 @@ impl AutoMod {
         if !author.is_empty() && self.max_window_ms > 0 {
             self.prune(msg.timestamp_ms);
             let hist = self.history.entry(author).or_default();
-            hist.push_back(Seen { at_ms: msg.timestamp_ms, channel_id: msg.channel_id.clone(), text: text_key });
+            hist.push_back(Seen {
+                at_ms: msg.timestamp_ms,
+                channel_id: msg.channel_id.clone(),
+                text: text_key,
+            });
             while hist.len() > HISTORY_MAX {
                 hist.pop_front();
             }
@@ -332,17 +383,30 @@ impl AutoMod {
                     let t = word_text(&msg.text);
                     c.words.iter().any(|w| t.contains(w.as_str()))
                 }
-                RuleKind::Links { allowed_domains } => {
-                    extract_domains(&msg.text).iter().any(|d| !domain_allowed(d, allowed_domains))
-                }
-                RuleKind::Caps { min_letters, ratio_percent } => {
-                    let letters: Vec<char> = msg.text.chars().filter(|c| c.is_alphabetic()).collect();
+                RuleKind::Links { allowed_domains } => extract_domains(&msg.text)
+                    .iter()
+                    .any(|d| !domain_allowed(d, allowed_domains)),
+                RuleKind::Caps {
+                    min_letters,
+                    ratio_percent,
+                } => {
+                    let letters: Vec<char> =
+                        msg.text.chars().filter(|c| c.is_alphabetic()).collect();
                     let upper = letters.iter().filter(|c| c.is_uppercase()).count();
-                    letters.len() >= *min_letters as usize && upper * 100 >= letters.len() * *ratio_percent as usize
+                    letters.len() >= *min_letters as usize
+                        && upper * 100 >= letters.len() * *ratio_percent as usize
                 }
-                RuleKind::Repeat { min_words, char_run } => repeats(&msg.text, *min_words, *char_run),
-                RuleKind::CrossPlatformSpam { window_secs, min_channels } => match history {
-                    Some((author, text_key)) => self.cross_spam(msg, author, text_key, *window_secs, *min_channels),
+                RuleKind::Repeat {
+                    min_words,
+                    char_run,
+                } => repeats(&msg.text, *min_words, *char_run),
+                RuleKind::CrossPlatformSpam {
+                    window_secs,
+                    min_channels,
+                } => match history {
+                    Some((author, text_key)) => {
+                        self.cross_spam(msg, author, text_key, *window_secs, *min_channels)
+                    }
                     None => false,
                 },
             };
@@ -359,11 +423,20 @@ impl AutoMod {
         verdict
     }
 
-    fn cross_spam(&self, msg: &ChatMessage, author: &str, text_key: &str, window_secs: u32, min_channels: u32) -> bool {
+    fn cross_spam(
+        &self,
+        msg: &ChatMessage,
+        author: &str,
+        text_key: &str,
+        window_secs: u32,
+        min_channels: u32,
+    ) -> bool {
         if author.is_empty() || text_key.trim().is_empty() {
             return false;
         }
-        let Some(hist) = self.history.get(author) else { return false };
+        let Some(hist) = self.history.get(author) else {
+            return false;
+        };
         let window_ms = i64::from(window_secs) * 1000;
         let mut channels: Vec<&str> = vec![msg.channel_id.as_str()];
         for s in hist {
@@ -417,11 +490,22 @@ mod tests {
             },
             text: text.into(),
             timestamp_ms: ts,
+            emotes: vec![],
+            badges: vec![],
+            room_id: None,
         }
     }
 
     fn rule(id: &str, kind: RuleKind, action: RuleAction) -> Rule {
-        Rule { id: id.into(), name: id.into(), enabled: true, score: 10, kind, action, platforms: vec![] }
+        Rule {
+            id: id.into(),
+            name: id.into(),
+            enabled: true,
+            score: 10,
+            kind,
+            action,
+            platforms: vec![],
+        }
     }
 
     fn one(kind: RuleKind) -> AutoMod {
@@ -429,17 +513,31 @@ mod tests {
     }
 
     fn hits(a: &mut AutoMod, text: &str) -> bool {
-        !a.evaluate(&msg(Platform::Twitch, "c", "bob", text, 0)).is_clean()
+        !a.evaluate(&msg(Platform::Twitch, "c", "bob", text, 0))
+            .is_clean()
     }
 
     #[test]
     fn regex_rule_is_case_insensitive_and_rejects_invalid() {
-        let mut a = one(RuleKind::Regex { pattern: r"gagn(e|ez) \d+ ?(€|euros)".into() });
+        let mut a = one(RuleKind::Regex {
+            pattern: r"gagn(e|ez) \d+ ?(€|euros)".into(),
+        });
         assert!(hits(&mut a, "GAGNEZ 500 euros maintenant"));
         assert!(!hits(&mut a, "gagné une partie"));
-        let bad = rule("x", RuleKind::Regex { pattern: "(".into() }, RuleAction::Flag);
+        let bad = rule(
+            "x",
+            RuleKind::Regex {
+                pattern: "(".into(),
+            },
+            RuleAction::Flag,
+        );
         assert!(validate_rule(&bad).is_err());
-        assert!(validate_rule(&rule("x", RuleKind::Regex { pattern: "".into() }, RuleAction::Flag)).is_err());
+        assert!(validate_rule(&rule(
+            "x",
+            RuleKind::Regex { pattern: "".into() },
+            RuleAction::Flag
+        ))
+        .is_err());
         // une règle invalide est ignorée, sans paniquer
         let a = AutoMod::new(vec![bad]);
         assert!(a.preview(&msg(Platform::Kick, "c", "a", "(", 0)).is_clean());
@@ -447,19 +545,32 @@ mod tests {
 
     #[test]
     fn banned_words_ignore_case_accents_and_substrings() {
-        let mut a = one(RuleKind::BannedWords { words: vec!["Connard".into(), "fils de pute".into()] });
+        let mut a = one(RuleKind::BannedWords {
+            words: vec!["Connard".into(), "fils de pute".into()],
+        });
         assert!(hits(&mut a, "quel CONNARD"));
         assert!(hits(&mut a, "t'es un fils  de   pute!"));
         assert!(hits(&mut a, "Connard."));
         assert!(!hits(&mut a, "le connardisme est un mot inventé"));
-        let mut a = one(RuleKind::BannedWords { words: vec!["éléphant".into()] });
+        let mut a = one(RuleKind::BannedWords {
+            words: vec!["éléphant".into()],
+        });
         assert!(hits(&mut a, "un ELEPHANT"));
-        assert!(validate_rule(&rule("x", RuleKind::BannedWords { words: vec![" ".into()] }, RuleAction::Flag)).is_err());
+        assert!(validate_rule(&rule(
+            "x",
+            RuleKind::BannedWords {
+                words: vec![" ".into()]
+            },
+            RuleAction::Flag
+        ))
+        .is_err());
     }
 
     #[test]
     fn links_respect_allowlist() {
-        let mut a = one(RuleKind::Links { allowed_domains: vec!["twitch.tv".into(), "WWW.youtube.com".into()] });
+        let mut a = one(RuleKind::Links {
+            allowed_domains: vec!["twitch.tv".into(), "WWW.youtube.com".into()],
+        });
         assert!(!hits(&mut a, "regardez https://www.twitch.tv/garder"));
         assert!(!hits(&mut a, "clip sur clips.twitch.tv/abc"));
         assert!(!hits(&mut a, "https://youtube.com/watch?v=1"));
@@ -482,89 +593,190 @@ mod tests {
 
     #[test]
     fn caps_and_repeat_reproduce_old_heuristic() {
-        let mut caps = one(RuleKind::Caps { min_letters: 12, ratio_percent: 80 });
+        let mut caps = one(RuleKind::Caps {
+            min_letters: 12,
+            ratio_percent: 80,
+        });
         assert!(hits(&mut caps, "REGARDEZ MA CHAINE REGARDEZ MA CHAINE"));
         assert!(!hits(&mut caps, "LOL"));
         assert!(!hits(&mut caps, "GG pour le boss !!"));
-        let mut rep = one(RuleKind::Repeat { min_words: 4, char_run: 15 });
+        let mut rep = one(RuleKind::Repeat {
+            min_words: 4,
+            char_run: 15,
+        });
         assert!(hits(&mut rep, "spam spam spam spam"));
         assert!(hits(&mut rep, "aaaaaaaaaaaaaaaaaaaa"));
         assert!(!hits(&mut rep, "spam spam spam"));
         assert!(!hits(&mut rep, "GG pour le boss !!"));
-        assert!(validate_rule(&rule("x", RuleKind::Caps { min_letters: 5, ratio_percent: 0 }, RuleAction::Flag)).is_err());
+        assert!(validate_rule(&rule(
+            "x",
+            RuleKind::Caps {
+                min_letters: 5,
+                ratio_percent: 0
+            },
+            RuleAction::Flag
+        ))
+        .is_err());
     }
 
     #[test]
     fn cross_platform_spam_uses_normalized_author() {
-        let kind = RuleKind::CrossPlatformSpam { window_secs: 60, min_channels: 2 };
+        let kind = RuleKind::CrossPlatformSpam {
+            window_secs: 60,
+            min_channels: 2,
+        };
         let mut a = one(kind.clone());
-        assert!(a.evaluate(&msg(Platform::Twitch, "twitch:x", "Bob_42", "Suivez-moi sur ma chaîne !", 1_000)).is_clean());
+        assert!(a
+            .evaluate(&msg(
+                Platform::Twitch,
+                "twitch:x",
+                "Bob_42",
+                "Suivez-moi sur ma chaîne !",
+                1_000
+            ))
+            .is_clean());
         // même texte (casse/ponctuation différentes), pseudo normalisé identique, autre plateforme
-        let second = a.evaluate(&msg(Platform::Kick, "kick:x", "bob42", "suivez moi sur ma chaine", 20_000));
+        let second = a.evaluate(&msg(
+            Platform::Kick,
+            "kick:x",
+            "bob42",
+            "suivez moi sur ma chaine",
+            20_000,
+        ));
         assert_eq!(second.matches.len(), 1);
         // autre auteur : rien
-        assert!(a.evaluate(&msg(Platform::Kick, "kick:x", "alice", "suivez moi sur ma chaine", 21_000)).is_clean());
+        assert!(a
+            .evaluate(&msg(
+                Platform::Kick,
+                "kick:x",
+                "alice",
+                "suivez moi sur ma chaine",
+                21_000
+            ))
+            .is_clean());
         // hors fenêtre : rien
-        assert!(a.evaluate(&msg(Platform::Youtube, "yt:x", "bob42", "suivez moi sur ma chaine", 200_000)).is_clean());
+        assert!(a
+            .evaluate(&msg(
+                Platform::Youtube,
+                "yt:x",
+                "bob42",
+                "suivez moi sur ma chaine",
+                200_000
+            ))
+            .is_clean());
         // même chaîne répétée : pas du spam inter-chaînes
         let mut b = one(kind);
         b.evaluate(&msg(Platform::Kick, "k", "z", "salut", 0));
-        assert!(b.evaluate(&msg(Platform::Kick, "k", "z", "salut", 1000)).is_clean());
-        let bad = rule("x", RuleKind::CrossPlatformSpam { window_secs: 60, min_channels: 1 }, RuleAction::Flag);
+        assert!(b
+            .evaluate(&msg(Platform::Kick, "k", "z", "salut", 1000))
+            .is_clean());
+        let bad = rule(
+            "x",
+            RuleKind::CrossPlatformSpam {
+                window_secs: 60,
+                min_channels: 1,
+            },
+            RuleAction::Flag,
+        );
         assert!(validate_rule(&bad).is_err());
     }
 
     #[test]
     fn review_regressions() {
         // userinfo ne doit pas permettre de passer la liste blanche
-        assert_eq!(extract_domains("https://twitch.tv:443@evil.ru/x"), vec!["evil.ru"]);
+        assert_eq!(
+            extract_domains("https://twitch.tv:443@evil.ru/x"),
+            vec!["evil.ru"]
+        );
         // règles dégénérées refusées
         let bad = [
-            RuleKind::Caps { min_letters: 0, ratio_percent: 80 },
-            RuleKind::Repeat { min_words: 0, char_run: 0 },
-            RuleKind::Regex { pattern: "a*".into() },
+            RuleKind::Caps {
+                min_letters: 0,
+                ratio_percent: 80,
+            },
+            RuleKind::Repeat {
+                min_words: 0,
+                char_run: 0,
+            },
+            RuleKind::Regex {
+                pattern: "a*".into(),
+            },
         ];
         for k in bad {
             assert!(validate_rule(&rule("x", k, RuleAction::Delete)).is_err());
         }
         // l'historique est élagué hors fenêtre
-        let mut a = one(RuleKind::CrossPlatformSpam { window_secs: 10, min_channels: 2 });
+        let mut a = one(RuleKind::CrossPlatformSpam {
+            window_secs: 10,
+            min_channels: 2,
+        });
         a.evaluate(&msg(Platform::Twitch, "t", "bob", "yo", 0));
         a.evaluate(&msg(Platform::Twitch, "t", "bob", "yo", 100_000));
         assert_eq!(a.history["bob"].len(), 1);
         // sans règle de spam, aucun historique
-        let mut b = one(RuleKind::BannedWords { words: vec!["x".into()] });
+        let mut b = one(RuleKind::BannedWords {
+            words: vec!["x".into()],
+        });
         b.evaluate(&msg(Platform::Twitch, "t", "bob", "yo", 0));
         assert!(b.history.is_empty());
     }
 
     #[test]
     fn preview_does_not_record_history() {
-        let mut a = one(RuleKind::CrossPlatformSpam { window_secs: 60, min_channels: 2 });
+        let mut a = one(RuleKind::CrossPlatformSpam {
+            window_secs: 60,
+            min_channels: 2,
+        });
         a.preview(&msg(Platform::Twitch, "t", "bob", "yo", 0));
-        assert!(a.evaluate(&msg(Platform::Kick, "k", "bob", "yo", 10)).is_clean());
+        assert!(a
+            .evaluate(&msg(Platform::Kick, "k", "bob", "yo", 10))
+            .is_clean());
     }
 
     #[test]
     fn platform_filter_disabled_rules_and_moderators() {
-        let mut r = rule("r", RuleKind::BannedWords { words: vec!["nul".into()] }, RuleAction::Flag);
+        let mut r = rule(
+            "r",
+            RuleKind::BannedWords {
+                words: vec!["nul".into()],
+            },
+            RuleAction::Flag,
+        );
         r.platforms = vec![Platform::Kick];
         let mut a = AutoMod::new(vec![r.clone()]);
-        assert!(a.evaluate(&msg(Platform::Twitch, "c", "a", "nul", 0)).is_clean());
-        assert!(!a.evaluate(&msg(Platform::Kick, "c", "a", "nul", 0)).is_clean());
+        assert!(a
+            .evaluate(&msg(Platform::Twitch, "c", "a", "nul", 0))
+            .is_clean());
+        assert!(!a
+            .evaluate(&msg(Platform::Kick, "c", "a", "nul", 0))
+            .is_clean());
         let mut modmsg = msg(Platform::Kick, "c", "a", "nul", 0);
         modmsg.author.is_moderator = true;
         assert!(a.evaluate(&modmsg).is_clean());
         r.enabled = false;
         let mut a = AutoMod::new(vec![r]);
-        assert!(a.evaluate(&msg(Platform::Kick, "c", "a", "nul", 0)).is_clean());
+        assert!(a
+            .evaluate(&msg(Platform::Kick, "c", "a", "nul", 0))
+            .is_clean());
     }
 
     #[test]
     fn score_sums_and_actions_combine() {
-        let mut r1 = rule("liens", RuleKind::Links { allowed_domains: vec![] }, RuleAction::Delete);
+        let mut r1 = rule(
+            "liens",
+            RuleKind::Links {
+                allowed_domains: vec![],
+            },
+            RuleAction::Delete,
+        );
         r1.score = 30;
-        let mut r2 = rule("mots", RuleKind::BannedWords { words: vec!["arnaque".into()] }, RuleAction::Timeout { seconds: 600 });
+        let mut r2 = rule(
+            "mots",
+            RuleKind::BannedWords {
+                words: vec!["arnaque".into()],
+            },
+            RuleAction::Timeout { seconds: 600 },
+        );
         r2.score = 50;
         let mut a = AutoMod::new(vec![r1, r2]);
         let m = msg(Platform::Twitch, "c", "bob", "arnaque sur bit.ly/x", 5);
@@ -574,33 +786,68 @@ mod tests {
         assert_eq!(
             v.moderation_kinds(&m),
             vec![
-                ModerationKind::Timeout { user_id: "id-bob".into(), seconds: 600 },
-                ModerationKind::DeleteMessage { message_id: "m-5".into() },
+                ModerationKind::Timeout {
+                    user_id: "id-bob".into(),
+                    seconds: 600
+                },
+                ModerationKind::DeleteMessage {
+                    message_id: "m-5".into()
+                },
             ]
         );
-        let flag_only = one(RuleKind::BannedWords { words: vec!["x".into()] }).preview(&msg(Platform::Twitch, "c", "b", "x", 1));
+        let flag_only = one(RuleKind::BannedWords {
+            words: vec!["x".into()],
+        })
+        .preview(&msg(Platform::Twitch, "c", "b", "x", 1));
         assert!(!flag_only.is_clean());
         assert!(flag_only.moderation_kinds(&m).is_empty());
-        let zero = rule("t", RuleKind::BannedWords { words: vec!["x".into()] }, RuleAction::Timeout { seconds: 0 });
+        let zero = rule(
+            "t",
+            RuleKind::BannedWords {
+                words: vec!["x".into()],
+            },
+            RuleAction::Timeout { seconds: 0 },
+        );
         assert!(validate_rule(&zero).is_err());
     }
 
     #[test]
     fn longest_timeout_wins() {
-        let words = || RuleKind::BannedWords { words: vec!["x".into()] };
+        let words = || RuleKind::BannedWords {
+            words: vec!["x".into()],
+        };
         let a = AutoMod::new(vec![
             rule("a", words(), RuleAction::Timeout { seconds: 60 }),
             rule("b", words(), RuleAction::Timeout { seconds: 900 }),
         ]);
-        assert_eq!(a.preview(&msg(Platform::Twitch, "c", "b", "x", 1)).timeout_secs(), Some(900));
+        assert_eq!(
+            a.preview(&msg(Platform::Twitch, "c", "b", "x", 1))
+                .timeout_secs(),
+            Some(900)
+        );
     }
 
     #[test]
     fn rule_json_roundtrip_matches_migration_defaults() {
-        let r = rule("r", RuleKind::Links { allowed_domains: vec!["a.fr".into()] }, RuleAction::Timeout { seconds: 30 });
+        let r = rule(
+            "r",
+            RuleKind::Links {
+                allowed_domains: vec!["a.fr".into()],
+            },
+            RuleAction::Timeout { seconds: 30 },
+        );
         let json = serde_json::to_string(&r).unwrap();
         assert_eq!(serde_json::from_str::<Rule>(&json).unwrap(), r);
-        let k: RuleKind = serde_json::from_str(r#"{"type":"cross_platform_spam","window_secs":60,"min_channels":2}"#).unwrap();
-        assert_eq!(k, RuleKind::CrossPlatformSpam { window_secs: 60, min_channels: 2 });
+        let k: RuleKind = serde_json::from_str(
+            r#"{"type":"cross_platform_spam","window_secs":60,"min_channels":2}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            k,
+            RuleKind::CrossPlatformSpam {
+                window_secs: 60,
+                min_channels: 2
+            }
+        );
     }
 }

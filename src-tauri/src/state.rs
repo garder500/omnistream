@@ -35,10 +35,11 @@ impl AppState {
         connectors.register(Arc::new(twitch.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
-        let automod = std::sync::Mutex::new(AutoMod::new(db.list_automod_rules().unwrap_or_else(|e| {
-            eprintln!("automod: règles illisibles, automod désactivé: {e}");
-            Vec::new()
-        })));
+        let automod =
+            std::sync::Mutex::new(AutoMod::new(db.list_automod_rules().unwrap_or_else(|e| {
+                eprintln!("automod: règles illisibles, automod désactivé: {e}");
+                Vec::new()
+            })));
         let state = Self {
             db,
             automod,

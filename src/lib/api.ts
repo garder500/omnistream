@@ -9,10 +9,14 @@ import type {
   Settings,
   DestinationInput,
   FfmpegStatus,
+  Category,
+  PlatformUpdateResult,
   StreamDestination,
   StreamingState,
   TitleResult,
   StreamInfo,
+  StreamInfoUpdate,
+  StreamPreset,
 } from "./types";
 
 export const api = {
@@ -44,4 +48,11 @@ export const api = {
   setFfmpegPath: (path: string) => invoke<FfmpegStatus>("set_ffmpeg_path", { path }),
   setStreamTitle: (title: string) => invoke<TitleResult[]>("set_stream_title", { title }),
   twitchCurrentTitle: () => invoke<string | null>("twitch_current_title"),
+
+  updateStreamInfo: (channelIds: string[], update: StreamInfoUpdate) =>
+    invoke<PlatformUpdateResult[]>("update_stream_info", { channelIds, update }),
+  searchCategories: (query: string) => invoke<Category[]>("search_categories", { query }),
+  listPresets: () => invoke<StreamPreset[]>("list_presets"),
+  savePreset: (preset: StreamPreset) => invoke<void>("save_preset", { preset }),
+  deletePreset: (id: string) => invoke<void>("delete_preset", { id }),
 };

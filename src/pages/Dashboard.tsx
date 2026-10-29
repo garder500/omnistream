@@ -1,4 +1,5 @@
 import { ChatMessage } from "../components/ChatMessage";
+import { StreamInfoForm } from "../components/StreamInfoForm";
 import { Badge, Card, CardHeader, LinkButton, LiveBadge, PageHeader } from "../components/ui";
 import { PlatformBadge, PLATFORM_KEYS, PLATFORMS, platformKey } from "../lib/platforms";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
@@ -72,6 +73,7 @@ export default function Dashboard({ go }: { go: Go }) {
               );
             })}
           </Card>
+          <StreamInfoForm />
         </section>
 
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
