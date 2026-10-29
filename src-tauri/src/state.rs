@@ -5,7 +5,9 @@ use omnistream_core::automation::SystemClock;
 use omnistream_core::automation_service::AutomationService;
 use omnistream_core::automod::AutoMod;
 use omnistream_core::bansync::BanSync;
-use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector};
+use omnistream_core::connectors::{
+    ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector, YoutubeConnector,
+};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
 use omnistream_core::overlay::OverlayService;
@@ -17,6 +19,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub twitch: TwitchConnector,
     pub trovo: TrovoConnector,
+    pub youtube: YoutubeConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
     pub automation: Arc<AutomationService>,
@@ -48,9 +51,18 @@ impl AppState {
             }
         }));
 
+        let youtube = YoutubeConnector::new();
+        let youtube_db = db.clone();
+        youtube.on_token_refresh(Arc::new(move |user_id, tokens| {
+            if let Err(e) = youtube_db.save_tokens(user_id, tokens) {
+                eprintln!("impossible d'enregistrer les jetons YouTube renouvelés: {e}");
+            }
+        }));
+
         let mut connectors = ConnectorRegistry::new();
         connectors.register(Arc::new(twitch.clone()));
         connectors.register(Arc::new(trovo.clone()));
+        connectors.register(Arc::new(youtube.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
         let automation = Arc::new(AutomationService::new(
@@ -69,6 +81,7 @@ impl AppState {
             automation,
             twitch,
             trovo,
+            youtube,
             moderation: ModerationEngine::new(connectors.clone()),
             bansync: BanSync::new(db.clone(), connectors.clone()),
             connectors,

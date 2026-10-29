@@ -5,6 +5,7 @@ mod overlay_commands;
 mod state;
 mod trovo;
 mod ux;
+mod youtube;
 
 use omnistream_core::connectors::ChatEvent;
 use omnistream_core::emotes::EmoteCatalog;
@@ -159,6 +160,9 @@ pub fn run() {
             trovo::get_trovo_settings,
             trovo::set_trovo_app,
             trovo::trovo_login_start,
+            youtube::get_youtube_settings,
+            youtube::set_youtube_app,
+            youtube::youtube_login_start,
             commands::list_channels,
             commands::add_channel,
             commands::remove_channel,
