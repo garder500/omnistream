@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::db::Database;
+use crate::secrets::SecretStore;
 use crate::{Error, Result};
 
 pub const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -24,6 +25,8 @@ pub const DEFAULT_SUMMARY_MODEL: &str = "claude-sonnet-5-5";
 
 const KEY_ENABLED: &str = "ai_enabled";
 const KEY_API_KEY: &str = "ai_api_key";
+/// Nom du secret dans le trousseau de l'OS.
+const SECRET_NAME: &str = "ai-anthropic-api-key";
 const KEY_MOD_MODEL: &str = "ai_moderation_model";
 const KEY_SUM_MODEL: &str = "ai_summary_model";
 
@@ -109,11 +112,12 @@ impl Default for AiConfig {
 }
 
 impl AiConfig {
-    pub fn load(db: &Database) -> Result<Self> {
+    pub fn load(db: &Database, secrets: &dyn SecretStore) -> Result<Self> {
         let get = |k| db.get_setting(k).map(|v| v.filter(|s| !s.trim().is_empty()));
         Ok(Self {
             enabled: get(KEY_ENABLED)?.as_deref() == Some("1"),
-            api_key: get(KEY_API_KEY)?,
+            // Trousseau de l'OS d'abord ; repli sur la base locale si indisponible.
+            api_key: secrets.get(SECRET_NAME).ok().flatten().filter(|k| !k.is_empty()).or(get(KEY_API_KEY)?),
             moderation_model: get(KEY_MOD_MODEL)?.unwrap_or_else(|| DEFAULT_MODERATION_MODEL.into()),
             summary_model: get(KEY_SUM_MODEL)?.unwrap_or_else(|| DEFAULT_SUMMARY_MODEL.into()),
         })
@@ -123,10 +127,18 @@ impl AiConfig {
         db.set_setting(KEY_ENABLED, if enabled { "1" } else { "0" })
     }
 
-    /// Clé stockée dans `settings`, comme les autres secrets locaux (à migrer
-    /// vers le trousseau de l'OS avec eux). Chaîne vide = suppression.
-    pub fn save_api_key(db: &Database, key: &str) -> Result<()> {
-        db.set_setting(KEY_API_KEY, key.trim())
+    /// Enregistre la clé dans le trousseau de l'OS (repli : base locale si le
+    /// trousseau est indisponible). Chaîne vide = suppression.
+    pub fn save_api_key(db: &Database, secrets: &dyn SecretStore, key: &str) -> Result<()> {
+        let key = key.trim();
+        if key.is_empty() {
+            let _ = secrets.delete(SECRET_NAME);
+            return db.set_setting(KEY_API_KEY, "");
+        }
+        match secrets.set(SECRET_NAME, key) {
+            Ok(()) => db.set_setting(KEY_API_KEY, ""),
+            Err(_) => db.set_setting(KEY_API_KEY, key),
+        }
     }
 
     pub fn save_models(db: &Database, moderation: &str, summary: &str) -> Result<()> {
@@ -366,6 +378,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::secrets::MemoryStore;
     use std::sync::Mutex;
 
     type Call = (String, Vec<(String, String)>, Value);
@@ -503,23 +516,25 @@ mod tests {
     #[test]
     fn config_defaults_off_persists_and_masks_key() {
         let db = Database::open_in_memory().unwrap();
-        let c = AiConfig::load(&db).unwrap();
+        let secrets = MemoryStore::default();
+        let c = AiConfig::load(&db, &secrets).unwrap();
         assert!(!c.enabled && c.api_key.is_none());
         assert_eq!(c.moderation_model, "claude-haiku-5-5");
         assert_eq!(c.summary_model, "claude-sonnet-5-5");
 
-        AiConfig::save_api_key(&db, "  sk-ant-secret ").unwrap();
+        AiConfig::save_api_key(&db, &secrets, "  sk-ant-secret ").unwrap();
+        assert_eq!(db.get_setting("ai_api_key").unwrap().as_deref(), Some(""), "la clé ne reste pas en base quand le trousseau marche");
         AiConfig::save_enabled(&db, true).unwrap();
         AiConfig::save_models(&db, "", "claude-opus-5").unwrap();
-        let c = AiConfig::load(&db).unwrap();
+        let c = AiConfig::load(&db, &secrets).unwrap();
         assert!(c.enabled);
         assert_eq!(c.api_key.as_deref(), Some("sk-ant-secret"));
         assert_eq!(c.moderation_model, DEFAULT_MODERATION_MODEL);
         assert_eq!(c.summary_model, "claude-opus-5");
         assert!(!format!("{c:?}").contains("sk-ant-secret"));
 
-        AiConfig::save_api_key(&db, "").unwrap();
-        assert!(AiConfig::load(&db).unwrap().api_key.is_none());
+        AiConfig::save_api_key(&db, &secrets, "").unwrap();
+        assert!(AiConfig::load(&db, &secrets).unwrap().api_key.is_none());
 
         db.save_ai_summary("live", "m", "t", 1).unwrap();
     }
