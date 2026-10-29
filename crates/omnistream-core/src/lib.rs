@@ -16,6 +16,7 @@ pub mod error;
 pub mod ffmpeg;
 pub mod ingest;
 pub mod moderation;
+pub mod overlay;
 pub mod secrets;
 pub mod streaming;
 

@@ -11,6 +11,7 @@ const fr = {
   "nav.automations": "Automations",
   "nav.commands": "Commandes",
   "nav.history": "Historique",
+  "nav.overlays": "Overlays",
   "nav.main": "Navigation principale",
   "nav.skip": "Aller au contenu",
 
@@ -96,6 +97,7 @@ const en: Record<AllKeys, string> = {
   "nav.automations": "Automations",
   "nav.commands": "Commands",
   "nav.history": "History",
+  "nav.overlays": "Overlays",
   "nav.main": "Main navigation",
   "nav.skip": "Skip to content",
 

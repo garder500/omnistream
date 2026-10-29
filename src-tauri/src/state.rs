@@ -8,6 +8,7 @@ use omnistream_core::bansync::BanSync;
 use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
+use omnistream_core::overlay::OverlayService;
 use omnistream_core::secrets::KeyringStore;
 use omnistream_core::streaming::StreamService;
 use tokio::sync::mpsc;
@@ -22,6 +23,7 @@ pub struct AppState {
     pub automod: std::sync::Mutex<AutoMod>,
     pub bansync: BanSync,
     pub streams: StreamService,
+    pub overlay: OverlayService,
     pub chat_tx: mpsc::Sender<ChatEvent>,
 }
 
@@ -29,6 +31,7 @@ impl AppState {
     /// Retourne aussi le récepteur des événements de chat, à relayer vers l'interface.
     pub fn new(db_path: PathBuf) -> omnistream_core::Result<(Self, mpsc::Receiver<ChatEvent>)> {
         let db = Arc::new(Database::open(db_path)?);
+        let overlay = OverlayService::new(db.clone());
         let twitch = TwitchConnector::new();
         let hook_db = db.clone();
         twitch.on_token_refresh(Arc::new(move |user_id, tokens| {
@@ -70,6 +73,7 @@ impl AppState {
             bansync: BanSync::new(db.clone(), connectors.clone()),
             connectors,
             streams,
+            overlay,
             chat_tx,
         };
         Ok((state, chat_rx))
