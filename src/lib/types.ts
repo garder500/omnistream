@@ -130,3 +130,49 @@ export interface DeviceCode {
 export interface Settings {
   twitch_client_id: string | null;
 }
+
+// Bans synchronisés (miroir de `omnistream-core::bansync`).
+export interface IdentityLink {
+  person: string;
+  platform: Platform;
+  user_id: string;
+  display_name: string;
+}
+
+export type SyncKind = "ban" | "unban";
+
+export interface SyncRequest {
+  source_platform: Platform;
+  source_user_id: string;
+  source_name: string;
+  kind: SyncKind;
+  reason: string | null;
+  channel_ids: string[] | null;
+}
+
+export interface PreviewItem {
+  channel: Channel;
+  user_ids: string[];
+  status: "ready" | "no_identity";
+}
+
+export interface QueueItem {
+  id: number;
+  channel_id: string;
+  channel_name: string;
+  platform: Platform;
+  user_id: string;
+  status: "pending" | "done" | "failed";
+  attempts: number;
+  last_error: string | null;
+  updated_at_ms: number;
+}
+
+export interface BanJob {
+  id: string;
+  kind: SyncKind;
+  source_name: string;
+  reason: string | null;
+  created_at_ms: number;
+  items: QueueItem[];
+}

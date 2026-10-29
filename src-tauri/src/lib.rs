@@ -1,3 +1,4 @@
+mod bansync_commands;
 mod commands;
 mod state;
 
@@ -61,6 +62,10 @@ pub fn run() {
                 // Ouvre l'ingest RTMP local ; une erreur (port occupé) est visible dans l'interface.
                 let _ = handle.state::<AppState>().streams.start_ingest().await;
                 commands::restore_session(&handle.state::<AppState>()).await;
+                // Reprise des bans synchronisés restés en file avant l'arrêt.
+                if let Err(e) = handle.state::<AppState>().bansync.resume().await {
+                    eprintln!("reprise des bans synchronisés impossible: {e}");
+                }
             });
             Ok(())
         })
@@ -75,6 +80,13 @@ pub fn run() {
             commands::remove_channel,
             commands::send_message,
             commands::moderate,
+            bansync_commands::bansync_list_identities,
+            bansync_commands::bansync_link_identity,
+            bansync_commands::bansync_unlink_identity,
+            bansync_commands::bansync_preview,
+            bansync_commands::bansync_submit,
+            bansync_commands::bansync_retry,
+            bansync_commands::bansync_journal,
             commands::stream_infos,
             commands::list_destinations,
             commands::save_destination,

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use omnistream_core::bansync::BanSync;
 use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
@@ -13,6 +14,7 @@ pub struct AppState {
     pub twitch: TwitchConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
+    pub bansync: BanSync,
     pub streams: StreamService,
     pub chat_tx: mpsc::Sender<ChatEvent>,
 }
@@ -34,9 +36,10 @@ impl AppState {
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
         let state = Self {
-            db,
+            db: db.clone(),
             twitch,
             moderation: ModerationEngine::new(connectors.clone()),
+            bansync: BanSync::new(db.clone(), connectors.clone()),
             connectors,
             streams,
             chat_tx,

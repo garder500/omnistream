@@ -3,6 +3,7 @@
 //! Le crate `src-tauri` n'est qu'une fine couche de commandes IPC au-dessus.
 
 pub mod auth;
+pub mod bansync;
 pub mod connectors;
 pub mod db;
 pub mod domain;

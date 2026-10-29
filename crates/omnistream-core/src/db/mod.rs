@@ -12,6 +12,7 @@ use crate::Result;
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_tokens.sql"),
+    include_str!("migrations/0110_bansync.sql"),
 ];
 
 pub struct Database {
@@ -43,6 +44,11 @@ impl Database {
             conn.pragma_update(None, "user_version", i + 1)?;
         }
         Ok(())
+    }
+
+    /// Accès brut à la connexion pour les modules qui possèdent leurs propres tables (ex. `bansync`).
+    pub(crate) fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+        f(&self.conn.lock().unwrap())
     }
 
     pub fn save_account(&self, account: &Account) -> Result<()> {

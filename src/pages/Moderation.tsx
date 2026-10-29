@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Avatar, Button, Card, PageHeader } from "../components/ui";
+import { BanSyncPanel, type BanSyncPrefill } from "../components/BanSyncPanel";
+import { Avatar, Button, Card, PageHeader, Tabs } from "../components/ui";
 import { PlatformBadge, platformKey } from "../lib/platforms";
 import { flaggedQueue, formatAge, useStore } from "../lib/store";
 
@@ -9,10 +10,23 @@ export default function Moderation() {
   const [selectedId, setSelectedId] = useState<string>();
   const selected = queue.find((m) => m.id === selectedId) ?? queue[0];
   const channel = channels.find((c) => c.id === selected?.channel_id);
+  const [tab, setTab] = useState<"queue" | "bansync">("queue");
+  const [prefill, setPrefill] = useState<BanSyncPrefill>();
+
+  const tabs = <Tabs tabs={[{ id: "queue", label: "File de modération" }, { id: "bansync", label: "Bans synchronisés" }]} value={tab} onChange={(t) => { setTab(t); setPrefill(undefined); }} />;
+
+  if (tab === "bansync") {
+    return (
+      <div className="flex h-full flex-col">
+        <PageHeader title="Modération" subtitle="Bannissez un compte sur toutes vos plateformes en une fois" actions={tabs} />
+        <BanSyncPanel key={prefill ? `${prefill.platform}:${prefill.userId}` : "empty"} prefill={prefill} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Modération" subtitle="Les messages suspects (liens, majuscules, répétitions) arrivent ici en temps réel" />
+      <PageHeader title="Modération" subtitle="Les messages suspects (liens, majuscules, répétitions) arrivent ici en temps réel" actions={tabs} />
 
       <div className="flex min-h-0 flex-1 gap-5">
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -77,6 +91,16 @@ export default function Moderation() {
                 </Button>
                 <Button variant="outline" onClick={() => dismiss(selected.id)}>
                   Ignorer
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="col-span-2"
+                  onClick={() => {
+                    setPrefill({ platform: selected.platform, userId: selected.author.external_id, name: selected.author.display_name });
+                    setTab("bansync");
+                  }}
+                >
+                  Bannir sur toutes les plateformes…
                 </Button>
               </div>
             </>
