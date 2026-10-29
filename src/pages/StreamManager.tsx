@@ -30,14 +30,14 @@ export default function StreamManager() {
         title="Stream manager"
         subtitle="Un flux entrant, plusieurs destinations"
         actions={
-          <Button variant="primary" className="min-h-11" disabled={active === 0}>
+          <Button variant="primary" disabled={active === 0}>
             Passer en direct sur {active} plateforme{active > 1 ? "s" : ""}
           </Button>
         }
       />
 
       <Card className="flex items-center gap-5 px-5 py-4.5">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1e1b3a]">
+        <div className="flex h-11 w-11 items-center justify-center rounded-control bg-brand-soft">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <path d="M3 12h6l3-8 3 16 3-8h3" />
           </svg>
@@ -46,14 +46,14 @@ export default function StreamManager() {
           <div className="font-semibold">Entrée OBS</div>
           <div className="mt-0.5 font-mono text-[13px] text-muted">rtmp://127.0.0.1:1935/live · clé : ••••••••</div>
         </div>
-        <span className="flex items-center gap-2 font-semibold text-green-400">
+        <span className="flex items-center gap-2 font-semibold text-success">
           <span className="h-2 w-2 rounded-full bg-green-400" />
           Signal reçu · 1080p60 · 6,1 Mb/s
         </span>
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="grid grid-cols-[180px_1fr_1fr_160px_70px] gap-4 border-b border-[#20202c] px-5 py-3.5 text-[13px] text-muted">
+        <div className="grid grid-cols-[180px_1fr_1fr_160px_70px] gap-4 border-b border-line px-5 py-3.5 text-[13px] text-muted">
           <span>Plateforme</span>
           <span>Titre du live</span>
           <span>Serveur RTMP</span>
@@ -63,7 +63,7 @@ export default function StreamManager() {
         {destinations.map((d, i) => (
           <div
             key={d.platform}
-            className={`grid grid-cols-[180px_1fr_1fr_160px_70px] items-center gap-4 px-5 py-4 ${i < destinations.length - 1 ? "border-b border-[#20202c]" : ""}`}
+            className={`grid grid-cols-[180px_1fr_1fr_160px_70px] items-center gap-4 px-5 py-4 ${i < destinations.length - 1 ? "border-b border-line" : ""}`}
           >
             <span className="flex items-center gap-2.5 font-semibold">
               <PlatformBadge platform={d.platform} size={28} />
@@ -74,7 +74,7 @@ export default function StreamManager() {
             ) : (
               <Input value={title} onChange={(e) => setTitle(e.target.value)} aria-label={`Titre ${PLATFORMS[d.platform].label}`} />
             )}
-            <span className="truncate font-mono text-[13px] text-[#b4b4c7]">{d.server}</span>
+            <span className="truncate font-mono text-[13px] text-soft">{d.server}</span>
             {d.platform === "tiktok" ? (
               <Input
                 placeholder="Coller la clé"
@@ -83,7 +83,7 @@ export default function StreamManager() {
                 onChange={(e) => update("tiktok", { key: e.target.value })}
               />
             ) : (
-              <span className="font-mono text-[#b4b4c7]">{d.key}</span>
+              <span className="font-mono text-soft">{d.key}</span>
             )}
             <span className="flex justify-end">
               <Toggle checked={d.enabled} onChange={(v) => update(d.platform, { enabled: v })} label={`Diffuser sur ${PLATFORMS[d.platform].label}`} />
@@ -93,8 +93,8 @@ export default function StreamManager() {
       </Card>
 
       <div className="flex gap-4">
-        <Button className="border border-dashed border-[#3a3a50] !bg-panel">+ Ajouter une destination (RTMP personnalisé)</Button>
-        <Button className="border border-[#2a2a3a] !bg-panel">Appliquer le titre à toutes</Button>
+        <Button variant="dashed">+ Ajouter une destination (RTMP personnalisé)</Button>
+        <Button variant="outline">Appliquer le titre à toutes</Button>
       </div>
       <p className="text-xs text-muted">
         TikTok exige un compte éligible : la clé se copie depuis TikTok Live Studio (aucun OAuth disponible).

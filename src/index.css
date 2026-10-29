@@ -1,32 +1,69 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
 
+/*
+ * Charte « Orbite » : nuit indigo, un violet de marque, et les couleurs
+ * des plateformes comme satellites. Tout style passe par ces tokens.
+ */
 @theme {
-  --color-ink: #0b0b10;
-  --color-panel: #14141c;
-  --color-line: #232331;
-  --color-muted: #9a9ab0;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", system-ui, sans-serif;
+
+  /* Surfaces, du plus profond au plus clair */
+  --color-ink: #0a0a12;
+  --color-panel: #12121d;
+  --color-field: #0e0e17;
+  --color-raised: #1b1b2a;
+  --color-field-hover: #161623;
+
+  /* Bordures et textes */
+  --color-line: #232336;
+  --color-line-strong: #36364f;
+  --color-muted: #9494ad;
+  --color-soft: #b8b8cf;
+
+  /* Marque */
   --color-brand: #7c3aed;
+  --color-brand-hi: #8b5cf6;
+  --color-brand-soft: #2a1d52;
+  --color-brand-line: #5b3fb0;
+  --color-brand-ring: #a78bfa;
+
+  /* États */
+  --color-success: #4ade80;
+  --color-success-soft: #10301d;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #3a2d12;
+  --color-danger: #ff5c5c;
+  --color-danger-soft: #2a1216;
+  --color-danger-line: #5a2229;
+  --color-danger-text: #ff8a8a;
+  --color-info: #67e8f9;
+  --color-info-soft: #12303a;
+
+  /* Plateformes */
   --color-twitch: #a970ff;
   --color-youtube: #ff5c5c;
   --color-kick: #53fc18;
   --color-tiktok: #25f4ee;
 
-  /* Charte Omnistream : surfaces, bordures et rythme des contrôles */
-  --color-field: #0f0f16;
-  --color-field-hover: #161621;
-  --color-line-strong: #34344a;
-  --color-brand-soft: #2a1d52;
-  --color-brand-ring: #a78bfa;
   --radius-control: 0.75rem;
-  --spacing-control: 2.75rem;
+  --radius-card: 1.25rem;
+  --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 0.6);
+}
+
+body {
+  background: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
 }
 
 /* Anneau de focus unique pour tous les contrôles au clavier */
 :where(button, input, select, textarea, [role="switch"]):focus-visible {
   outline: 2px solid var(--color-brand-ring);
   outline-offset: 2px;
-}
-
-body {
-  background: var(--color-ink);
 }
