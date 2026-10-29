@@ -17,8 +17,18 @@ pub enum Error {
     Database(#[from] rusqlite::Error),
     #[error("erreur d'entrée/sortie: {0}")]
     Io(#[from] std::io::Error),
+    #[error("erreur réseau: {0}")]
+    Network(String),
+    #[error("compte non connecté: {0}")]
+    NotAuthenticated(&'static str),
     #[error("{0}")]
     Other(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<reqwest::Error> for Error {
+    fn from(e: reqwest::Error) -> Self {
+        Error::Network(e.to_string())
+    }
+}

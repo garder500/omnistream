@@ -5,6 +5,7 @@ export interface Account {
   id: string;
   platform: Platform;
   display_name: string;
+  login: string;
 }
 
 export interface Channel {
@@ -43,4 +44,32 @@ export interface StreamDestination {
   rtmp_url: string;
   stream_key: string;
   enabled: boolean;
+}
+
+export type StreamEvent = {
+  id: string;
+  channel_id: string;
+  platform: Platform;
+  who: string;
+  message: string | null;
+  timestamp_ms: number;
+} & ({ type: "sub"; months: number } | { type: "gift"; recipient: string | null } | { type: "raid"; viewers: number });
+
+export interface StreamInfo {
+  channel_id: string;
+  title: string;
+  viewers: number;
+  started_at: string;
+}
+
+export interface DeviceCode {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface Settings {
+  twitch_client_id: string | null;
 }
