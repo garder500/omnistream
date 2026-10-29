@@ -1,5 +1,5 @@
 // Miroir des types de `omnistream-core::domain`.
-export type Platform = "twitch" | "youtube" | "kick" | "tiktok" | { other: string };
+export type Platform = "twitch" | "youtube" | "kick" | "tiktok" | "trovo" | { other: string };
 
 export interface Account {
   id: string;
@@ -15,6 +15,23 @@ export interface Channel {
   display_name: string;
 }
 
+export type EmoteProvider = "twitch" | "seven_tv" | "bttv" | "ffz";
+
+/** Indices en caractères Unicode (fin exclue): utiliser Array.from(text). */
+export interface EmoteSpan {
+  start: number;
+  end: number;
+  name: string;
+  url: string;
+  provider: EmoteProvider;
+  zero_width?: boolean;
+}
+
+export interface ChatBadge {
+  set_id: string;
+  version: string;
+}
+
 export interface ChatMessage {
   id: string;
   channel_id: string;
@@ -27,6 +44,8 @@ export interface ChatMessage {
   };
   text: string;
   timestamp_ms: number;
+  emotes?: EmoteSpan[];
+  badges?: ChatBadge[];
 }
 
 export type ModerationKind =
@@ -103,6 +122,16 @@ export interface TitleResult {
   message: string;
 }
 
+export type StreamEventKind =
+  | { type: "follow" }
+  | { type: "sub"; months: number }
+  | { type: "gift"; recipient: string | null }
+  | { type: "raid"; viewers: number }
+  | { type: "donation"; amount_cents: number; currency: string }
+  | { type: "bits"; amount: number };
+
+export type StreamEventType = StreamEventKind["type"];
+
 export type StreamEvent = {
   id: string;
   channel_id: string;
@@ -110,7 +139,32 @@ export type StreamEvent = {
   who: string;
   message: string | null;
   timestamp_ms: number;
-} & ({ type: "sub"; months: number } | { type: "gift"; recipient: string | null } | { type: "raid"; viewers: number });
+} & StreamEventKind;
+
+// Historique des sessions (miroir de `omnistream-core::db::history`).
+export interface SessionSummary {
+  id: string;
+  started_at_ms: number;
+  /** `null` tant que la session est en cours. */
+  ended_at_ms: number | null;
+  peak_viewers: number;
+  avg_viewers: number;
+  event_count: number;
+  events_by_kind: Partial<Record<StreamEventType, number>>;
+}
+
+/** Somme brute des spectateurs à un sondage (les doublons entre plateformes ne sont pas retirés). */
+export interface ViewerPoint {
+  ts_ms: number;
+  total: number;
+  by_platform: Record<string, number>;
+}
+
+export interface SessionDetail {
+  summary: SessionSummary;
+  points: ViewerPoint[];
+  events: StreamEvent[];
+}
 
 export interface StreamInfo {
   channel_id: string;
@@ -119,12 +173,120 @@ export interface StreamInfo {
   started_at: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+}
+
+export interface StreamInfoUpdate {
+  title?: string | null;
+  category?: string | null;
+  tags?: string[] | null;
+}
+
+export interface PlatformUpdateResult {
+  channel_id: string;
+  platform: Platform;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface StreamPreset {
+  id: string;
+  name: string;
+  title: string;
+  category: string;
+  tags: string[];
+}
+
 export interface DeviceCode {
   device_code: string;
   user_code: string;
   verification_uri: string;
   expires_in: number;
   interval: number;
+}
+
+// Automod : miroir de `omnistream-core::automod`.
+export type RuleKind =
+  | { type: "regex"; pattern: string }
+  | { type: "banned_words"; words: string[] }
+  | { type: "links"; allowed_domains: string[] }
+  | { type: "caps"; min_letters: number; ratio_percent: number }
+  | { type: "repeat"; min_words: number; char_run: number }
+  | { type: "cross_platform_spam"; window_secs: number; min_channels: number };
+
+export type RuleAction = { type: "flag" } | { type: "delete" } | { type: "timeout"; seconds: number };
+
+export interface AutomodRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  score: number;
+  kind: RuleKind;
+  action: RuleAction;
+  /** Vide = toutes les plateformes. */
+  platforms: string[];
+}
+
+export interface AutomodVerdict {
+  matches: { rule_id: string; name: string; score: number; action: RuleAction }[];
+  score: number;
+}
+
+export interface TrovoSettings {
+  client_id: string | null;
+  has_secret: boolean;
+  redirect_uri: string;
+}
+
+// --- Automations ---
+export type Role = "everyone" | "subscriber" | "moderator" | "broadcaster";
+
+export type Target = { kind: "source" } | { kind: "all" } | { kind: "platforms"; platforms: Platform[] };
+
+export type Trigger =
+  | { type: "message"; contains: string }
+  | { type: "follow" }
+  | { type: "sub" }
+  | { type: "raid"; min_viewers: number }
+  | { type: "timer"; every_secs: number }
+  | { type: "stream_start" }
+  | { type: "stream_end" };
+
+export type AutomationAction =
+  | { type: "send_message"; target: Target; text: string }
+  | { type: "timeout"; seconds: number }
+  | { type: "delete_message" }
+  | { type: "ban"; reason: string | null };
+
+export interface Rule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: Trigger;
+  action: AutomationAction;
+  platforms: Platform[];
+  cooldown_secs: number;
+}
+
+export interface ChatCommand {
+  id: string;
+  name: string;
+  response: string;
+  enabled: boolean;
+  cooldown_secs: number;
+  user_cooldown_secs: number;
+  min_role: Role;
+  platforms: Platform[];
+  reply: Target;
+}
+
+export interface AutomationLogEntry {
+  at_ms: number;
+  origin: string;
+  summary: string;
+  error: string | null;
 }
 
 export interface Settings {

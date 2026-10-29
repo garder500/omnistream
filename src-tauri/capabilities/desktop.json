@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Permissions réservées au bureau (mises à jour automatiques)",
+  "windows": ["main"],
+  "platforms": ["linux", "windows", "macOS"],
+  "permissions": ["updater:default"]
+}

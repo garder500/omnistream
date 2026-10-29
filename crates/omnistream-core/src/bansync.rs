@@ -105,7 +105,10 @@ pub struct Job {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 pub struct BanSync {
@@ -159,7 +162,10 @@ impl BanSync {
 
     pub fn unlink_identity(&self, platform: &Platform, user_id: &str) -> Result<()> {
         self.db.with_conn(|c| {
-            c.execute("DELETE FROM identity_links WHERE platform = ?1 AND user_id = ?2", (platform.as_str(), user_id))?;
+            c.execute(
+                "DELETE FROM identity_links WHERE platform = ?1 AND user_id = ?2",
+                (platform.as_str(), user_id),
+            )?;
             Ok(())
         })
     }
@@ -181,13 +187,20 @@ impl BanSync {
     }
 
     /// Identifiant sur `target` de la personne qui possède (platform, user_id).
-    fn resolve(&self, platform: &Platform, user_id: &str, target: &Platform) -> Result<Vec<String>> {
+    fn resolve(
+        &self,
+        platform: &Platform,
+        user_id: &str,
+        target: &Platform,
+    ) -> Result<Vec<String>> {
         self.db.with_conn(|c| {
             let mut stmt = c.prepare(
                 "SELECT t.user_id FROM identity_links s JOIN identity_links t ON t.person = s.person
                  WHERE s.platform = ?1 AND s.user_id = ?2 AND t.platform = ?3 ORDER BY t.rowid",
             )?;
-            let rows = stmt.query_map((platform.as_str(), user_id, target.as_str()), |r| r.get::<_, String>(0))?;
+            let rows = stmt.query_map((platform.as_str(), user_id, target.as_str()), |r| {
+                r.get::<_, String>(0)
+            })?;
             Ok(rows.collect::<std::result::Result<_, _>>()?)
         })
     }
@@ -209,14 +222,24 @@ impl BanSync {
             };
             // Les alias liés à la source sur sa propre plateforme sont bannis aussi.
             if channel.platform == req.source_platform {
-                for id in self.resolve(&req.source_platform, &req.source_user_id, &channel.platform)? {
+                for id in
+                    self.resolve(&req.source_platform, &req.source_user_id, &channel.platform)?
+                {
                     if !user_ids.contains(&id) {
                         user_ids.push(id);
                     }
                 }
             }
-            let status = if user_ids.is_empty() { PreviewStatus::NoIdentity } else { PreviewStatus::Ready };
-            items.push(PreviewItem { channel, user_ids, status });
+            let status = if user_ids.is_empty() {
+                PreviewStatus::NoIdentity
+            } else {
+                PreviewStatus::Ready
+            };
+            items.push(PreviewItem {
+                channel,
+                user_ids,
+                status,
+            });
         }
         Ok(items)
     }
@@ -225,10 +248,15 @@ impl BanSync {
 
     /// Met en file les éléments prêts de la prévisualisation ; ne contacte aucune plateforme.
     pub fn enqueue(&self, req: &SyncRequest) -> Result<String> {
-        let ready: Vec<PreviewItem> =
-            self.preview(req)?.into_iter().filter(|i| i.status == PreviewStatus::Ready).collect();
+        let ready: Vec<PreviewItem> = self
+            .preview(req)?
+            .into_iter()
+            .filter(|i| i.status == PreviewStatus::Ready)
+            .collect();
         if ready.is_empty() {
-            return Err(Error::Other("aucune chaîne cible avec une identité connue".into()));
+            return Err(Error::Other(
+                "aucune chaîne cible avec une identité connue".into(),
+            ));
         }
         let now = now_ms();
         self.db.with_conn(|c| {
@@ -256,14 +284,20 @@ impl BanSync {
         let _guard = self.run_lock.lock().await;
         // (id de file, id chaîne, ban/unban, utilisateur, motif)
         type Pending = (i64, String, Option<SyncKind>, String, Option<String>);
-        let pending: Vec<Pending> =self.db.with_conn(|c| {
+        let pending: Vec<Pending> = self.db.with_conn(|c| {
             let mut stmt = c.prepare(
                 "SELECT q.id, q.channel_id, j.kind, q.user_id, j.reason
                  FROM ban_queue q JOIN ban_jobs j ON j.id = q.job_id
                  WHERE q.status = 'pending' AND (?1 IS NULL OR q.job_id = ?1) ORDER BY q.id",
             )?;
             let rows = stmt.query_map([job_id], |r| {
-                Ok((r.get(0)?, r.get(1)?, SyncKind::parse(&r.get::<_, String>(2)?), r.get(3)?, r.get(4)?))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    SyncKind::parse(&r.get::<_, String>(2)?),
+                    r.get(3)?,
+                    r.get(4)?,
+                ))
             })?;
             Ok(rows.collect::<std::result::Result<_, _>>()?)
         })?;
@@ -283,14 +317,24 @@ impl BanSync {
                 }
             };
             self.throttle(&channel.platform).await;
-            let result = self.engine.apply(&ModerationAction { channel, kind }).await.map_err(|e| e.to_string());
+            let result = self
+                .engine
+                .apply(&ModerationAction { channel, kind })
+                .await
+                .map_err(|e| e.to_string());
             self.record(qid, result)?;
         }
         Ok(())
     }
 
     async fn throttle(&self, platform: &Platform) {
-        let interval = self.intervals.lock().unwrap().get(platform).copied().unwrap_or(self.default_interval);
+        let interval = self
+            .intervals
+            .lock()
+            .unwrap()
+            .get(platform)
+            .copied()
+            .unwrap_or(self.default_interval);
         let wait = {
             let mut last = self.last_call.lock().await;
             let now = Instant::now();
@@ -398,7 +442,11 @@ mod tests {
 
     impl Recorder {
         fn new(platform: Platform) -> Arc<Self> {
-            Arc::new(Self { platform, calls: Default::default(), fail: Default::default() })
+            Arc::new(Self {
+                platform,
+                calls: Default::default(),
+                fail: Default::default(),
+            })
         }
     }
 
@@ -438,7 +486,13 @@ mod tests {
             ("kick:a", Platform::Kick, "a"),
             ("yt:a", Platform::Youtube, "a"),
         ] {
-            db.save_channel(&Channel { id: id.into(), platform: p, external_id: ext.into(), display_name: ext.into() }).unwrap();
+            db.save_channel(&Channel {
+                id: id.into(),
+                platform: p,
+                external_id: ext.into(),
+                display_name: ext.into(),
+            })
+            .unwrap();
         }
         let tw = Recorder::new(Platform::Twitch);
         let kick = Recorder::new(Platform::Kick);
@@ -446,8 +500,20 @@ mod tests {
         reg.register(tw.clone());
         reg.register(kick.clone());
         let bs = BanSync::new(db, reg).with_default_interval(interval);
-        bs.link_identity(&IdentityLink { person: "troll".into(), platform: Platform::Twitch, user_id: "t1".into(), display_name: "Troll".into() }).unwrap();
-        bs.link_identity(&IdentityLink { person: "troll".into(), platform: Platform::Kick, user_id: "k1".into(), display_name: "Troll".into() }).unwrap();
+        bs.link_identity(&IdentityLink {
+            person: "troll".into(),
+            platform: Platform::Twitch,
+            user_id: "t1".into(),
+            display_name: "Troll".into(),
+        })
+        .unwrap();
+        bs.link_identity(&IdentityLink {
+            person: "troll".into(),
+            platform: Platform::Kick,
+            user_id: "k1".into(),
+            display_name: "Troll".into(),
+        })
+        .unwrap();
         (bs, tw, kick)
     }
 
@@ -488,7 +554,10 @@ mod tests {
         assert_eq!(tw.calls.lock().unwrap().len(), 2);
         let j = &bs.journal(10).unwrap()[0];
         assert_eq!(j.items.len(), 3);
-        assert!(j.items.iter().all(|i| i.status == "done" && i.attempts == 1));
+        assert!(j
+            .items
+            .iter()
+            .all(|i| i.status == "done" && i.attempts == 1));
         // Idempotent : un second passage ne renvoie rien.
         bs.process(None).await.unwrap();
         assert_eq!(kick.calls.lock().unwrap().len(), 1);
@@ -509,7 +578,14 @@ mod tests {
         bs.retry_failed(Some(&job)).await.unwrap();
         let j = &bs.journal(10).unwrap()[0];
         assert!(j.items.iter().all(|i| i.status == "done"));
-        assert_eq!(j.items.iter().find(|i| i.channel_id == "kick:a").unwrap().attempts, 2);
+        assert_eq!(
+            j.items
+                .iter()
+                .find(|i| i.channel_id == "kick:a")
+                .unwrap()
+                .attempts,
+            2
+        );
         assert_eq!(kick.calls.lock().unwrap().len(), 1);
     }
 
@@ -526,10 +602,22 @@ mod tests {
     #[tokio::test]
     async fn bans_every_linked_account_on_a_platform() {
         let (bs, _, kick) = setup(Duration::ZERO);
-        bs.link_identity(&IdentityLink { person: "troll".into(), platform: Platform::Kick, user_id: "k2".into(), display_name: "alt".into() }).unwrap();
+        bs.link_identity(&IdentityLink {
+            person: "troll".into(),
+            platform: Platform::Kick,
+            user_id: "k2".into(),
+            display_name: "alt".into(),
+        })
+        .unwrap();
         let job = bs.enqueue(&req()).unwrap();
         bs.process(Some(&job)).await.unwrap();
-        let calls: Vec<String> = kick.calls.lock().unwrap().iter().map(|c| c.0.clone()).collect();
+        let calls: Vec<String> = kick
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|c| c.0.clone())
+            .collect();
         assert_eq!(calls, vec!["ban:k1", "ban:k2"]);
     }
 
@@ -542,9 +630,18 @@ mod tests {
         r.channel_ids = Some(vec!["twitch:a".into()]);
         assert!(bs.enqueue(&r).is_err());
 
-        bs.link_identity(&IdentityLink { person: "autre".into(), platform: Platform::Kick, user_id: "k1".into(), display_name: "x".into() }).unwrap();
+        bs.link_identity(&IdentityLink {
+            person: "autre".into(),
+            platform: Platform::Kick,
+            user_id: "k1".into(),
+            display_name: "x".into(),
+        })
+        .unwrap();
         let p = bs.preview(&req()).unwrap();
-        assert_eq!(p.iter().find(|i| i.channel.id == "kick:a").unwrap().status, PreviewStatus::NoIdentity);
+        assert_eq!(
+            p.iter().find(|i| i.channel.id == "kick:a").unwrap().status,
+            PreviewStatus::NoIdentity
+        );
         assert_eq!(bs.list_identities().unwrap().len(), 2);
     }
 }

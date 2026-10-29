@@ -1,7 +1,8 @@
 //! Moteur de modération : une seule entrée, dispatch vers le bon connecteur.
 
+use crate::automod::Verdict;
 use crate::connectors::ConnectorRegistry;
-use crate::domain::ModerationAction;
+use crate::domain::{Channel, ChatMessage, ModerationAction};
 use crate::Result;
 
 pub struct ModerationEngine {
@@ -29,32 +30,26 @@ impl ModerationEngine {
         }
         results
     }
-}
 
-/// Détection simple (sans IA) des messages à relire : liens, majuscules, répétitions.
-pub fn flag_reason(text: &str) -> Option<&'static str> {
-    let lower = text.to_lowercase();
-    if ["http://", "https://", "www.", "bit.ly/", ".ly/"].iter().any(|p| lower.contains(p)) {
-        return Some("Lien suspect");
+    /// Applique les actions décidées par l'automod (timeout, suppression) sur la
+    /// chaîne du message, quelle que soit sa plateforme. Un échec n'interrompt
+    /// pas les autres actions.
+    pub async fn apply_verdict(
+        &self,
+        channel: &Channel,
+        msg: &ChatMessage,
+        verdict: &Verdict,
+    ) -> Vec<Result<()>> {
+        let actions: Vec<ModerationAction> = verdict
+            .moderation_kinds(msg)
+            .into_iter()
+            .map(|kind| ModerationAction {
+                channel: channel.clone(),
+                kind,
+            })
+            .collect();
+        self.apply_all(&actions).await
     }
-    let letters: Vec<char> = text.chars().filter(|c| c.is_alphabetic()).collect();
-    if letters.len() >= 12 && letters.iter().filter(|c| c.is_uppercase()).count() * 10 >= letters.len() * 8 {
-        return Some("Majuscules");
-    }
-    let words: Vec<&str> = lower.split_whitespace().collect();
-    if words.len() >= 4 && words.iter().all(|w| *w == words[0]) {
-        return Some("Répétition");
-    }
-    let mut run = 1;
-    let mut prev = None;
-    for c in text.chars() {
-        run = if Some(c) == prev { run + 1 } else { 1 };
-        if run >= 15 {
-            return Some("Répétition");
-        }
-        prev = Some(c);
-    }
-    None
 }
 
 #[cfg(test)]
@@ -65,8 +60,9 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
+    use crate::automod::{AutoMod, Rule, RuleAction, RuleKind};
     use crate::connectors::{ChatConnector, ChatEvent};
-    use crate::domain::{Channel, ModerationKind, Platform};
+    use crate::domain::{Channel, ChatAuthor, ModerationKind, Platform};
     use crate::Error;
 
     #[derive(Default)]
@@ -100,7 +96,10 @@ mod tests {
                 external_id: "chan".into(),
                 display_name: "Chan".into(),
             },
-            kind: ModerationKind::Timeout { user_id: "u".into(), seconds: 60 },
+            kind: ModerationKind::Timeout {
+                user_id: "u".into(),
+                seconds: 60,
+            },
         }
     }
 
@@ -118,13 +117,99 @@ mod tests {
         assert!(matches!(err, Error::UnknownPlatform(Platform::Twitch)));
     }
 
-    #[test]
-    fn flags_spam_but_not_normal_chat() {
-        assert_eq!(flag_reason("achetez des abonnés sur bit.ly/xxxx"), Some("Lien suspect"));
-        assert_eq!(flag_reason("REGARDEZ MA CHAINE REGARDEZ MA CHAINE"), Some("Majuscules"));
-        assert_eq!(flag_reason("spam spam spam spam"), Some("Répétition"));
-        assert_eq!(flag_reason("aaaaaaaaaaaaaaaaaaaa"), Some("Répétition"));
-        assert_eq!(flag_reason("GG pour le boss !!"), None);
-        assert_eq!(flag_reason("LOL"), None);
+    fn chat(text: &str) -> ChatMessage {
+        ChatMessage {
+            id: "m1".into(),
+            channel_id: "c1".into(),
+            platform: Platform::Kick,
+            author: ChatAuthor {
+                external_id: "u9".into(),
+                display_name: "Bob".into(),
+                is_moderator: false,
+                is_subscriber: false,
+            },
+            text: text.into(),
+            timestamp_ms: 0,
+            emotes: vec![],
+            badges: vec![],
+            room_id: None,
+        }
+    }
+
+    fn rule(id: &str, kind: RuleKind, action: RuleAction) -> Rule {
+        Rule {
+            id: id.into(),
+            name: id.into(),
+            enabled: true,
+            score: 10,
+            kind,
+            action,
+            platforms: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn applies_automod_verdict_through_the_connector() {
+        let recorder = Arc::new(Recorder::default());
+        let mut registry = ConnectorRegistry::new();
+        registry.register(recorder.clone());
+        let engine = ModerationEngine::new(registry);
+        let channel = action(Platform::Kick).channel;
+
+        let mut automod = AutoMod::new(vec![
+            rule(
+                "liens",
+                RuleKind::Links {
+                    allowed_domains: vec![],
+                },
+                RuleAction::Delete,
+            ),
+            rule(
+                "mots",
+                RuleKind::BannedWords {
+                    words: vec!["arnaque".into()],
+                },
+                RuleAction::Timeout { seconds: 300 },
+            ),
+            rule(
+                "caps",
+                RuleKind::Caps {
+                    min_letters: 3,
+                    ratio_percent: 80,
+                },
+                RuleAction::Flag,
+            ),
+        ]);
+
+        let m = chat("arnaque sur bit.ly/x");
+        let verdict = automod.evaluate(&m);
+        let results = engine.apply_verdict(&channel, &m, &verdict).await;
+        assert!(results.iter().all(|r| r.is_ok()));
+        assert_eq!(
+            *recorder.0.lock().unwrap(),
+            vec!["timeout", "delete_message"]
+        );
+
+        // flag seul : aucune action de modération
+        recorder.0.lock().unwrap().clear();
+        let m = chat("BONJOUR TOUT LE MONDE");
+        let verdict = automod.evaluate(&m);
+        assert!(!verdict.is_clean());
+        assert!(engine
+            .apply_verdict(&channel, &m, &verdict)
+            .await
+            .is_empty());
+        assert!(recorder.0.lock().unwrap().is_empty());
+
+        // plateforme sans connecteur : l'erreur est remontée sans paniquer
+        let m = chat("arnaque");
+        let verdict = automod.evaluate(&m);
+        let mut twitch = channel.clone();
+        twitch.platform = Platform::Twitch;
+        let results = engine.apply_verdict(&twitch, &m, &verdict).await;
+        assert!(matches!(
+            results[0],
+            Err(Error::UnknownPlatform(Platform::Twitch))
+        ));
     }
 }

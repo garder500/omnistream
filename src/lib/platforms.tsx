@@ -1,6 +1,6 @@
 import type { Platform } from "./types";
 
-export type PlatformKey = "twitch" | "youtube" | "kick" | "tiktok";
+export type PlatformKey = "twitch" | "youtube" | "kick" | "tiktok" | "trovo";
 
 interface PlatformMeta {
   label: string;
@@ -18,6 +18,7 @@ export const PLATFORMS: Record<PlatformKey, PlatformMeta> = {
   youtube: { label: "YouTube", letter: "Y", badge: "bg-youtube text-[#1a0508]", text: "text-[#ff9c9c]", readOnly: false },
   kick: { label: "Kick", letter: "K", badge: "bg-kick text-[#0b1a04]", text: "text-[#8cf05b]", readOnly: false },
   tiktok: { label: "TikTok", letter: "Tk", badge: "bg-tiktok text-[#032a29]", text: "text-[#7ff7f2]", readOnly: true },
+  trovo: { label: "Trovo", letter: "Tr", badge: "bg-trovo text-[#03180c]", text: "text-[#7df0ac]", readOnly: false },
 };
 
 export const PLATFORM_KEYS = Object.keys(PLATFORMS) as PlatformKey[];
