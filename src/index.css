@@ -10,6 +10,21 @@
   --color-youtube: #ff5c5c;
   --color-kick: #53fc18;
   --color-tiktok: #25f4ee;
+
+  /* Charte Omnistream : surfaces, bordures et rythme des contrôles */
+  --color-field: #0f0f16;
+  --color-field-hover: #161621;
+  --color-line-strong: #34344a;
+  --color-brand-soft: #2a1d52;
+  --color-brand-ring: #a78bfa;
+  --radius-control: 0.75rem;
+  --spacing-control: 2.75rem;
+}
+
+/* Anneau de focus unique pour tous les contrôles au clavier */
+:where(button, input, select, textarea, [role="switch"]):focus-visible {
+  outline: 2px solid var(--color-brand-ring);
+  outline-offset: 2px;
 }
 
 body {

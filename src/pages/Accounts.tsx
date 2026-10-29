@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, PageHeader } from "../components/ui";
+import { Button, Card, Input, PageHeader } from "../components/ui";
 import { PlatformBadge, PLATFORMS, type PlatformKey } from "../lib/platforms";
 
 type Status = "connected" | "expired" | "readonly";
@@ -48,12 +48,11 @@ export default function Accounts() {
               ))}
             </ul>
             {a.platform === "tiktok" && (
-              <input
+              <Input
                 value={tiktokHandle}
                 onChange={(e) => setTiktokHandle(e.target.value)}
                 placeholder="@votre_pseudo"
                 aria-label="Pseudo TikTok"
-                className="rounded-lg border border-[#2a2a3a] bg-ink px-3 py-2.5 outline-none focus:border-brand"
               />
             )}
             <div className="mt-auto flex gap-2.5">
