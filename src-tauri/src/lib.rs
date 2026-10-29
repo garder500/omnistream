@@ -101,6 +101,11 @@ pub fn run() {
             commands::set_ffmpeg_path,
             commands::set_stream_title,
             commands::twitch_current_title,
+            commands::update_stream_info,
+            commands::search_categories,
+            commands::list_presets,
+            commands::save_preset,
+            commands::delete_preset,
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Omnistream");

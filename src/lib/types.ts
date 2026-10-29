@@ -138,6 +138,32 @@ export interface StreamInfo {
   started_at: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+}
+
+export interface StreamInfoUpdate {
+  title?: string | null;
+  category?: string | null;
+  tags?: string[] | null;
+}
+
+export interface PlatformUpdateResult {
+  channel_id: string;
+  platform: Platform;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface StreamPreset {
+  id: string;
+  name: string;
+  title: string;
+  category: string;
+  tags: string[];
+}
+
 export interface DeviceCode {
   device_code: string;
   user_code: string;
