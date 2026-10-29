@@ -1,5 +1,6 @@
 //! Base SQLite locale : comptes, destinations de stream, préférences, historique du chat.
 
+mod automation;
 mod history;
 
 use std::path::Path;
@@ -14,12 +15,15 @@ use crate::Result;
 
 pub use history::{SessionDetail, SessionSummary, ViewerPoint, ViewerSampleInput, SESSION_GAP_MS};
 
+// Ordre = version (`PRAGMA user_version`) : n'insérer qu'en fin de liste, jamais au milieu.
+// Le numéro du fichier (0130...) sert à repérer les migrations des différentes fonctionnalités.
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001_init.sql"),
     include_str!("migrations/0002_tokens.sql"),
     include_str!("migrations/0140_presets.sql"),
     include_str!("migrations/0100_automod.sql"),
     include_str!("migrations/0120_sessions.sql"),
+    include_str!("migrations/0130_automations.sql"),
 ];
 
 pub struct Database {

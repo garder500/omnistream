@@ -3,6 +3,8 @@
 //! Le crate `src-tauri` n'est qu'une fine couche de commandes IPC au-dessus.
 
 pub mod auth;
+pub mod automation;
+pub mod automation_service;
 pub mod automod;
 pub mod connectors;
 pub mod db;

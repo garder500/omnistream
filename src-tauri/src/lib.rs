@@ -15,7 +15,17 @@ async fn forward_chat_events(
     mut rx: tokio::sync::mpsc::Receiver<ChatEvent>,
     emotes: EmoteCatalog,
 ) {
+    // Automatisations (commandes !cmd, règles) : un seul worker, donc événements traités dans l'ordre,
+    // et hors de la boucle pour ne jamais bloquer l'affichage du chat. File pleine = événement ignoré.
+    let automation = app.state::<AppState>().automation.clone();
+    let (auto_tx, mut auto_rx) = tokio::sync::mpsc::channel::<ChatEvent>(1024);
+    tauri::async_runtime::spawn(async move {
+        while let Some(ev) = auto_rx.recv().await {
+            automation.on_chat_event(&ev).await;
+        }
+    });
     while let Some(event) = rx.recv().await {
+        let _ = auto_tx.try_send(event.clone());
         let _ = match event {
             ChatEvent::Message(mut m) => {
                 emotes.annotate(&mut m);
@@ -74,6 +84,26 @@ async fn forward_streaming_events(app: tauri::AppHandle) {
     }
 }
 
+/// Minuteurs (chaque seconde) et détection début/fin de live (chaque minute).
+fn spawn_automation_loops(app: tauri::AppHandle) {
+    let automation = app.state::<AppState>().automation.clone();
+    let ticker = automation.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            ticker.tick().await;
+        }
+    });
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            automation.poll_live().await;
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
@@ -95,6 +125,7 @@ pub fn run() {
                 let _ = handle.state::<AppState>().streams.start_ingest().await;
                 commands::restore_session(&handle.state::<AppState>()).await;
             });
+            spawn_automation_loops(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -130,6 +161,13 @@ pub fn run() {
             commands::set_ffmpeg_path,
             commands::set_stream_title,
             commands::twitch_current_title,
+            commands::list_rules,
+            commands::save_rule,
+            commands::delete_rule,
+            commands::list_chat_commands,
+            commands::save_chat_command,
+            commands::delete_chat_command,
+            commands::automation_log,
             commands::update_stream_info,
             commands::search_categories,
             commands::list_presets,

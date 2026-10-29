@@ -240,6 +240,55 @@ export interface TrovoSettings {
   redirect_uri: string;
 }
 
+// --- Automations ---
+export type Role = "everyone" | "subscriber" | "moderator" | "broadcaster";
+
+export type Target = { kind: "source" } | { kind: "all" } | { kind: "platforms"; platforms: Platform[] };
+
+export type Trigger =
+  | { type: "message"; contains: string }
+  | { type: "follow" }
+  | { type: "sub" }
+  | { type: "raid"; min_viewers: number }
+  | { type: "timer"; every_secs: number }
+  | { type: "stream_start" }
+  | { type: "stream_end" };
+
+export type AutomationAction =
+  | { type: "send_message"; target: Target; text: string }
+  | { type: "timeout"; seconds: number }
+  | { type: "delete_message" }
+  | { type: "ban"; reason: string | null };
+
+export interface Rule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: Trigger;
+  action: AutomationAction;
+  platforms: Platform[];
+  cooldown_secs: number;
+}
+
+export interface ChatCommand {
+  id: string;
+  name: string;
+  response: string;
+  enabled: boolean;
+  cooldown_secs: number;
+  user_cooldown_secs: number;
+  min_role: Role;
+  platforms: Platform[];
+  reply: Target;
+}
+
+export interface AutomationLogEntry {
+  at_ms: number;
+  origin: string;
+  summary: string;
+  error: string | null;
+}
+
 export interface Settings {
   twitch_client_id: string | null;
 }
