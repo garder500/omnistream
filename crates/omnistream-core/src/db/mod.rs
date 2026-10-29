@@ -25,6 +25,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0120_sessions.sql"),
     include_str!("migrations/0130_automations.sql"),
     include_str!("migrations/0110_bansync.sql"),
+    include_str!("migrations/0150_ai.sql"),
 ];
 
 pub struct Database {
@@ -157,6 +158,12 @@ impl Database {
             .lock()
             .unwrap()
             .execute("DELETE FROM channels WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Écriture SQL simple pour les modules voisins (ex. `ai`).
+    pub(crate) fn execute(&self, sql: &str, params: impl rusqlite::Params) -> Result<()> {
+        self.conn.lock().unwrap().execute(sql, params)?;
         Ok(())
     }
 

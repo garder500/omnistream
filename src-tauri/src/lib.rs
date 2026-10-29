@@ -1,3 +1,4 @@
+mod ai_commands;
 mod bansync_commands;
 mod commands;
 mod state;
@@ -173,6 +174,10 @@ pub fn run() {
             commands::set_ffmpeg_path,
             commands::set_stream_title,
             commands::twitch_current_title,
+            ai_commands::ai_get_settings,
+            ai_commands::ai_save_settings,
+            ai_commands::ai_score_message,
+            ai_commands::ai_summarize,
             commands::list_rules,
             commands::save_rule,
             commands::delete_rule,

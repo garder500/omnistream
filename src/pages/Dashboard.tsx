@@ -1,3 +1,4 @@
+import { AiSummaryCard } from "../components/AiSummaryCard";
 import { ChatMessage } from "../components/ChatMessage";
 import { StreamInfoForm } from "../components/StreamInfoForm";
 import { Badge, Card, CardHeader, LinkButton, LiveBadge, PageHeader } from "../components/ui";
@@ -76,6 +77,7 @@ export default function Dashboard({ go }: { go: Go }) {
               );
             })}
           </Card>
+          <AiSummaryCard goModeration={() => go("moderation")} />
           <StreamInfoForm />
         </section>
 

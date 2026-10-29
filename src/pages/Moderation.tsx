@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AiModerationPanel } from "../components/AiModerationPanel";
 import AutomodRules from "../components/AutomodRules";
 import { BanSyncPanel, type BanSyncPrefill } from "../components/BanSyncPanel";
 import { Avatar, Button, Card, PageHeader } from "../components/ui";
@@ -45,6 +46,8 @@ export default function Moderation() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Modération" subtitle="Les messages qui déclenchent une règle d'automod arrivent ici en temps réel" actions={tabs} />
+
+      {tab === "queue" && <AiModerationPanel />}
 
       {tab === "rules" ? (
         <AutomodRules />

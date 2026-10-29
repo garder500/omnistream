@@ -9,6 +9,7 @@ import History from "./pages/History";
 import Moderation from "./pages/Moderation";
 import MultiChat from "./pages/MultiChat";
 import StreamManager from "./pages/StreamManager";
+import { AiProvider } from "./lib/ai";
 import { flaggedQueue, StoreProvider, useStore } from "./lib/store";
 
 type SectionId = "dashboard" | "chat" | "moderation" | "automations" | "commands" | "stream" | "history" | "accounts";
@@ -27,7 +28,9 @@ const SECTIONS: { id: SectionId; label: string; icon: string; Component: (p: { g
 export default function App() {
   return (
     <StoreProvider>
-      <Shell />
+      <AiProvider>
+        <Shell />
+      </AiProvider>
     </StoreProvider>
   );
 }
