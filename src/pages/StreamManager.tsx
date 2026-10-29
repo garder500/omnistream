@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, PageHeader, Toggle } from "../components/ui";
+import { Button, Card, Input, PageHeader, Toggle } from "../components/ui";
 import { PlatformBadge, PLATFORMS, type PlatformKey } from "../lib/platforms";
 
 interface Destination {
@@ -72,19 +72,14 @@ export default function StreamManager() {
             {PLATFORMS[d.platform].readOnly ? (
               <span className="text-[13px] text-muted">Le titre se règle dans TikTok Live Studio.</span>
             ) : (
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                aria-label={`Titre ${PLATFORMS[d.platform].label}`}
-                className="rounded-lg border border-[#2a2a3a] bg-ink px-3 py-2.5 outline-none focus:border-brand"
-              />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} aria-label={`Titre ${PLATFORMS[d.platform].label}`} />
             )}
             <span className="truncate font-mono text-[13px] text-[#b4b4c7]">{d.server}</span>
             {d.platform === "tiktok" ? (
-              <input
+              <Input
                 placeholder="Coller la clé"
                 aria-label="Clé de stream TikTok"
-                className="rounded-lg border border-[#2a2a3a] bg-ink px-3 py-2.5 font-mono text-[13px] outline-none focus:border-brand"
+                className="font-mono text-[13px]"
                 onChange={(e) => update("tiktok", { key: e.target.value })}
               />
             ) : (

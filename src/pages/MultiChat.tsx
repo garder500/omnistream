@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChatMessage } from "../components/ChatMessage";
-import { Button, Card } from "../components/ui";
+import { Button, Card, Input } from "../components/ui";
 import { PlatformBadge, PLATFORM_KEYS, PLATFORMS, type PlatformKey } from "../lib/platforms";
 import { EVENTS, MESSAGES, VIEWERS } from "../lib/mock";
 
@@ -60,13 +60,8 @@ export default function MultiChat() {
               setDraft("");
             }}
           >
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Écrire un message…"
-              className="min-h-11 flex-1 rounded-xl border border-[#2a2a3a] bg-ink px-3.5 outline-none focus:border-brand"
-            />
-            <div className="flex gap-1.5" role="group" aria-label="Plateformes d'envoi">
+            <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Écrire un message…" className="flex-1" />
+            <div className="flex gap-2.5" role="group" aria-label="Plateformes d'envoi">
               {PLATFORM_KEYS.filter((p) => !PLATFORMS[p].readOnly).map((p) => (
                 <button
                   type="button"
@@ -76,7 +71,7 @@ export default function MultiChat() {
                   onClick={() => toggle(p)}
                   className={sendTo.includes(p) ? "" : "opacity-40"}
                 >
-                  <PlatformBadge platform={p} size={32} />
+                  <PlatformBadge platform={p} size={36} />
                 </button>
               ))}
             </div>

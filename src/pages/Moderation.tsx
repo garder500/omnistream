@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, PageHeader } from "../components/ui";
+import { Button, Card, PageHeader, PlatformChipGroup } from "../components/ui";
 import { PlatformBadge, PLATFORMS, type PlatformKey } from "../lib/platforms";
 import { FLAGGED } from "../lib/mock";
 
@@ -86,16 +86,10 @@ export default function Moderation() {
                 </div>
               </div>
               <div className="rounded-xl bg-ink p-3 leading-relaxed text-[#b4b4c7]">« {selected.text} »</div>
-              <fieldset>
-                <legend className="mb-2 text-muted">Appliquer à</legend>
-                {ACTIONABLE.map((p) => (
-                  <label key={p} className="flex min-h-9 items-center gap-2.5">
-                    <input type="checkbox" checked={targets.includes(p)} onChange={() => toggle(p)} className="accent-violet-500" />
-                    {PLATFORMS[p].label}
-                  </label>
-                ))}
-                <p className="mt-2 text-xs text-muted">TikTok : lecture seule, pas de modération possible.</p>
-              </fieldset>
+              <div className="flex flex-col gap-3">
+                <PlatformChipGroup legend="Appliquer à" platforms={ACTIONABLE} selected={targets} onToggle={toggle} />
+                <p className="text-xs text-muted">TikTok : lecture seule, pas de modération possible.</p>
+              </div>
               <div className="mt-auto grid grid-cols-2 gap-2.5">
                 <Button onClick={() => resolve("Message supprimé")}>Supprimer le message</Button>
                 <Button variant="warn" onClick={() => resolve("Timeout 10 min")}>
