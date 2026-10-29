@@ -90,6 +90,7 @@ pub struct ChatMessage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEventKind {
+    Follow,
     Sub { months: u32 },
     Gift { recipient: Option<String> },
     Raid { viewers: u32 },

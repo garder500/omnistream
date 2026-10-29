@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  AutomationLogEntry,
+  ChatCommand,
+  Rule,
   Channel,
   DeviceCode,
   ModerationKind,
@@ -38,4 +41,12 @@ export const api = {
   setFfmpegPath: (path: string) => invoke<FfmpegStatus>("set_ffmpeg_path", { path }),
   setStreamTitle: (title: string) => invoke<TitleResult[]>("set_stream_title", { title }),
   twitchCurrentTitle: () => invoke<string | null>("twitch_current_title"),
+
+  listRules: () => invoke<Rule[]>("list_rules"),
+  saveRule: (rule: Rule) => invoke<void>("save_rule", { rule }),
+  deleteRule: (id: string) => invoke<void>("delete_rule", { id }),
+  listChatCommands: () => invoke<ChatCommand[]>("list_chat_commands"),
+  saveChatCommand: (command: ChatCommand) => invoke<void>("save_chat_command", { command }),
+  deleteChatCommand: (id: string) => invoke<void>("delete_chat_command", { id }),
+  automationLog: () => invoke<AutomationLogEntry[]>("automation_log"),
 };

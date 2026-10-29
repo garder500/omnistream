@@ -1,4 +1,6 @@
 use omnistream_core::auth::twitch::{self as twitch_auth, DeviceCode};
+use omnistream_core::automation::{ChatCommand, Rule};
+use omnistream_core::automation_service::LogEntry;
 use omnistream_core::connectors::TwitchCreds;
 use omnistream_core::domain::{Account, Channel, ModerationAction, ModerationKind, Platform, StreamInfo};
 use omnistream_core::ffmpeg::FfmpegStatus;
@@ -146,6 +148,7 @@ pub async fn add_channel(state: State<'_, AppState>, platform: String, name: Str
     state.db.save_channel(&channel).map_err(err)?;
     let connector = state.connectors.get(&channel.platform).map_err(err)?;
     connector.connect(&channel, state.chat_tx.clone()).await.map_err(err)?;
+    let _ = state.automation.reload();
     Ok(channel)
 }
 
@@ -165,7 +168,9 @@ pub async fn remove_channel(state: State<'_, AppState>, channel_id: String) -> C
     if let Ok(connector) = state.connectors.get(&channel.platform) {
         let _ = connector.disconnect(&channel).await;
     }
-    state.db.delete_channel(&channel_id).map_err(err)
+    state.db.delete_channel(&channel_id).map_err(err)?;
+    let _ = state.automation.reload();
+    Ok(())
 }
 
 #[tauri::command]
@@ -279,4 +284,44 @@ pub async fn twitch_current_title(state: State<'_, AppState>) -> CmdResult<Optio
         return Ok(None);
     }
     state.twitch.channel_title().await.map(Some).map_err(err)
+}
+
+#[tauri::command]
+pub fn list_rules(state: State<'_, AppState>) -> CmdResult<Vec<Rule>> {
+    state.db.list_rules().map_err(err)
+}
+
+#[tauri::command]
+pub fn save_rule(state: State<'_, AppState>, rule: Rule) -> CmdResult<()> {
+    state.db.save_rule(&rule).map_err(err)?;
+    state.automation.reload().map_err(err)
+}
+
+#[tauri::command]
+pub fn delete_rule(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.db.delete_rule(&id).map_err(err)?;
+    state.automation.reload().map_err(err)
+}
+
+#[tauri::command]
+pub fn list_chat_commands(state: State<'_, AppState>) -> CmdResult<Vec<ChatCommand>> {
+    state.db.list_commands().map_err(err)
+}
+
+#[tauri::command]
+pub fn save_chat_command(state: State<'_, AppState>, mut command: ChatCommand) -> CmdResult<()> {
+    command.name = ChatCommand::normalize_name(&command.name);
+    state.db.save_command(&command).map_err(err)?;
+    state.automation.reload().map_err(err)
+}
+
+#[tauri::command]
+pub fn delete_chat_command(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.db.delete_command(&id).map_err(err)?;
+    state.automation.reload().map_err(err)
+}
+
+#[tauri::command]
+pub fn automation_log(state: State<'_, AppState>) -> Vec<LogEntry> {
+    state.automation.recent_log()
 }

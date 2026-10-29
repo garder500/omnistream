@@ -7,6 +7,8 @@ import type { StreamEvent } from "../lib/types";
 
 function describe(e: StreamEvent): string {
   switch (e.type) {
+    case "follow":
+      return "vous suit";
     case "sub":
       return e.months > 1 ? `s'abonne · ${e.months} mois` : "s'abonne";
     case "gift":
