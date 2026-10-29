@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, Input, Modal, PageHeader } from "../components/ui";
+import { Badge, Button, Card, Input, Modal, PageHeader, Select } from "../components/ui";
+import TrovoCard from "../components/TrovoCard";
 import { api } from "../lib/api";
 import { PlatformBadge, PLATFORMS, platformKey } from "../lib/platforms";
 import { useStore } from "../lib/store";
@@ -14,6 +15,7 @@ export default function Accounts() {
       <PageHeader title="Comptes" subtitle="Connectez vos chaînes et choisissez les chats à suivre." />
       <div className="grid grid-cols-2 gap-5 xl:grid-cols-4">
         <TwitchCard />
+        <TrovoCard />
         <ComingSoon platform="youtube" lines={["Chat en lecture et écriture", "Modération depuis Omnistream"]} />
         <ComingSoon platform="kick" lines={["Chat en lecture et écriture", "Modération depuis Omnistream"]} />
         <ComingSoon platform="tiktok" lines={["Chat et événements en lecture seule", "Sans OAuth : il suffira de saisir votre pseudo"]} />
@@ -144,6 +146,7 @@ function ComingSoon({ platform, lines }: { platform: "youtube" | "kick" | "tikto
 function Channels() {
   const { channels, connected, addChannel, removeChannel } = useStore();
   const [name, setName] = useState("");
+  const [platform, setPlatform] = useState<"twitch" | "trovo">("twitch");
 
   return (
     <Card className="p-5">
@@ -155,11 +158,15 @@ function Channels() {
         className="mb-4 flex gap-3"
         onSubmit={async (e) => {
           e.preventDefault();
-          await addChannel("twitch", name);
+          await addChannel(platform, name);
           setName("");
         }}
       >
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom de la chaîne Twitch (ex. garder_live)" aria-label="Chaîne Twitch" className="flex-1" />
+        <Select value={platform} onChange={(e) => setPlatform(e.target.value as "twitch" | "trovo")} aria-label="Plateforme">
+          <option value="twitch">Twitch</option>
+          <option value="trovo">Trovo</option>
+        </Select>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Nom de la chaîne ${PLATFORMS[platform].label} (ex. garder_live)`} aria-label={`Chaîne ${PLATFORMS[platform].label}`} className="flex-1" />
         <Button variant="primary" type="submit" disabled={!name.trim()}>
           Suivre
         </Button>

@@ -1,10 +1,35 @@
 import { listen } from "@tauri-apps/api/event";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
+import { loadPrefs, savePrefs, translate, type Lang, type Prefs, type TFn } from "./i18n";
+import { systemNotify } from "./notify";
+import { platformKey, type PlatformKey } from "./platforms";
 import type { Account, Channel, ChatMessage, ModerationKind, StreamEvent, StreamInfo } from "./types";
+import type { ChatterOverlap } from "./viewers";
 
 const MAX_MESSAGES = 500;
-const MAX_EVENTS = 50;
+const MAX_EVENTS = 200;
+const MAX_CHATTERS = 20_000;
+
+/** Retient sur quelles plateformes un pseudo a parlé (base de l'estimation de doublons). */
+function trackChatter(map: Map<string, Set<PlatformKey>>, name: string, platform: PlatformKey) {
+  const key = name.trim().toLowerCase();
+  if (!key) return;
+  if (map.size >= MAX_CHATTERS && !map.has(key)) {
+    // Évince le plus ancien (ordre d'insertion) plutôt que de tout perdre.
+    const oldest = map.keys().next();
+    if (!oldest.done) map.delete(oldest.value);
+  }
+  const seen = map.get(key);
+  if (seen) seen.add(platform);
+  else map.set(key, new Set([platform]));
+}
+
+function chatterOverlap(map: Map<string, Set<PlatformKey>>): ChatterOverlap {
+  let shared = 0;
+  for (const platforms of map.values()) if (platforms.size > 1) shared++;
+  return { chatters: map.size, shared };
+}
 
 export interface StoredMessage extends ChatMessage {
   flag: string | null;
@@ -27,8 +52,15 @@ interface Store {
   events: StreamEvent[];
   infos: StreamInfo[];
   msgPerMin: number;
+  /** Chatteurs vus depuis le lancement, et part de ceux présents sur plusieurs plateformes. */
+  overlap: ChatterOverlap;
   toasts: Toast[];
   modLog: string[];
+  /** Préférences d'interface (langue, contraste, notifications), persistées localement. */
+  prefs: Prefs;
+  lang: Lang;
+  t: TFn;
+  setPrefs: (patch: Partial<Prefs>) => void;
   refreshAccounts: () => Promise<void>;
   refreshChannels: () => Promise<void>;
   addChannel: (platform: string, name: string) => Promise<void>;
@@ -58,14 +90,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [infos, setInfos] = useState<StreamInfo[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modLog, setModLog] = useState<string[]>([]);
+  const [overlap, setOverlap] = useState<ChatterOverlap>({ chatters: 0, shared: 0 });
   const [now, setNow] = useState(() => Date.now());
+  const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
   const arrivals = useRef<number[]>([]);
+  const chatters = useRef(new Map<string, Set<PlatformKey>>());
   const toastId = useRef(0);
 
   const notify = useCallback((text: string, error = false) => {
     const id = ++toastId.current;
     setToasts((t) => [...t, { id, text, error }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+  }, []);
+
+  const t = useCallback<TFn>((key, params) => translate(prefs.lang, key, params), [prefs.lang]);
+  const setPrefs = useCallback((patch: Partial<Prefs>) => {
+    const next = { ...prefsRef.current, ...patch };
+    prefsRef.current = next;
+    savePrefs(next);
+    setPrefsState(next);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = prefs.lang;
+    document.documentElement.dataset.contrast = prefs.highContrast ? "high" : "normal";
+  }, [prefs.lang, prefs.highContrast]);
+
+  // Les préférences changées dans une autre fenêtre (dock) se propagent via l'événement `storage`.
+  useEffect(() => {
+    const onStorage = () => setPrefsState(loadPrefs());
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const refreshAccounts = useCallback(async () => setAccounts(await api.listAccounts()), []);
@@ -87,9 +144,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     on<{ message: ChatMessage; flag: string | null }>("chat://message", ({ message, flag }) => {
       arrivals.current.push(Date.now());
+      trackChatter(chatters.current, message.author.display_name, platformKey(message.platform));
       setMessages((ms) => [...ms.slice(-(MAX_MESSAGES - 1)), { ...message, flag }]);
+      if (flag && prefsRef.current.notifications) {
+        systemNotify(translate(prefsRef.current.lang, "notif.flagged"), message.author.display_name);
+      }
     });
-    on<StreamEvent>("chat://event", (e) => setEvents((es) => [e, ...es].slice(0, MAX_EVENTS)));
+    on<StreamEvent>("chat://event", (e) => {
+      setEvents((es) => [e, ...es].slice(0, MAX_EVENTS));
+      if (prefsRef.current.notifications) {
+        const key = e.type === "sub" ? "notif.sub" : e.type === "gift" ? "notif.gift" : "notif.raid";
+        systemNotify("Omnistream", translate(prefsRef.current.lang, key, { name: e.who, viewers: e.type === "raid" ? e.viewers : 0 }));
+      }
+    });
     on<{ message_id: string }>("chat://deleted", ({ message_id }) =>
       setMessages((ms) => ms.map((m) => (m.id === message_id ? { ...m, deleted: true } : m))),
     );
@@ -112,6 +179,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const t = setInterval(() => {
       const cutoff = Date.now() - 60_000;
       arrivals.current = arrivals.current.filter((a) => a >= cutoff);
+      setOverlap(chatterOverlap(chatters.current));
       setNow(Date.now());
     }, 5000);
     return () => clearInterval(t);
@@ -203,8 +271,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       events,
       infos,
       msgPerMin: arrivals.current.filter((a) => a >= now - 60_000).length,
+      overlap,
       toasts,
       modLog,
+      prefs,
+      lang: prefs.lang,
+      t,
+      setPrefs,
       refreshAccounts,
       refreshChannels,
       addChannel,
@@ -214,7 +287,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dismiss,
       notify,
     }),
-    [accounts, channels, connected, messages, events, infos, now, toasts, modLog, refreshAccounts, refreshChannels, addChannel, removeChannel, send, moderate, dismiss, notify],
+    [accounts, channels, connected, messages, events, infos, now, overlap, toasts, modLog, prefs, t, setPrefs, refreshAccounts, refreshChannels, addChannel, removeChannel, send, moderate, dismiss, notify],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

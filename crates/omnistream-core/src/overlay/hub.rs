@@ -239,7 +239,12 @@ impl OverlayHub {
     pub fn highlight(&self, id: &str, on: bool) {
         let mut inner = self.inner.lock().unwrap();
         let Inner { chat, .. } = &mut *inner;
-        for m in chat.history.iter_mut().chain(chat.pinned.as_mut()).filter(|m| m.id == id) {
+        for m in chat
+            .history
+            .iter_mut()
+            .chain(chat.pinned.as_mut())
+            .filter(|m| m.id == id)
+        {
             m.highlighted = on;
         }
         let payload = envelope(CHAT_CHANNEL, "highlight", &json!({ "id": id, "on": on }));
@@ -288,7 +293,11 @@ mod tests {
         OverlayMessage {
             id: id.into(),
             platform: "twitch".into(),
-            author: OverlayAuthor { display_name: "Ana".into(), is_moderator: false, is_subscriber: false },
+            author: OverlayAuthor {
+                display_name: "Ana".into(),
+                is_moderator: false,
+                is_subscriber: false,
+            },
             text: "salut".into(),
             timestamp_ms: 0,
             emotes: vec![],
@@ -301,7 +310,10 @@ mod tests {
         let hub = OverlayHub::new();
         let mut alerts = hub.subscribe(ALERTS_CHANNEL);
         let mut chat = hub.subscribe(CHAT_CHANNEL);
-        assert_eq!(hub.publish(ALERTS_CHANNEL, "sub", &json!({"who": "Ana"})), 1);
+        assert_eq!(
+            hub.publish(ALERTS_CHANNEL, "sub", &json!({"who": "Ana"})),
+            1
+        );
         let got: Value = serde_json::from_str(&alerts.try_recv().unwrap()).unwrap();
         assert_eq!(got["channel"], "alerts");
         assert_eq!(got["type"], "sub");
@@ -327,7 +339,15 @@ mod tests {
     #[test]
     fn settings_are_sanitized() {
         let hub = OverlayHub::new();
-        let s = hub.set_settings(OverlaySettings { theme: "inconnu".into(), max_messages: 0, font_size: 999, ..Default::default() });
-        assert_eq!((s.theme.as_str(), s.max_messages, s.font_size), ("orbite", 1, 96));
+        let s = hub.set_settings(OverlaySettings {
+            theme: "inconnu".into(),
+            max_messages: 0,
+            font_size: 999,
+            ..Default::default()
+        });
+        assert_eq!(
+            (s.theme.as_str(), s.max_messages, s.font_size),
+            ("orbite", 1, 96)
+        );
     }
 }

@@ -1,16 +1,33 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Account,
+  AutomationLogEntry,
+  ChatCommand,
+  Rule,
+  AutomodRule,
+  AutomodVerdict,
   Channel,
+  BanJob,
   DeviceCode,
+  IdentityLink,
   ModerationKind,
+  Platform,
+  PreviewItem,
+  SessionDetail,
+  SessionSummary,
+  SyncRequest,
   Settings,
   DestinationInput,
   FfmpegStatus,
+  TrovoSettings,
+  Category,
+  PlatformUpdateResult,
   StreamDestination,
   StreamingState,
   TitleResult,
   StreamInfo,
+  StreamInfoUpdate,
+  StreamPreset,
 } from "./types";
 
 export const api = {
@@ -19,6 +36,9 @@ export const api = {
 
   listAccounts: () => invoke<Account[]>("list_accounts"),
   twitchLoginStart: () => invoke<DeviceCode>("twitch_login_start"),
+  getTrovoSettings: () => invoke<TrovoSettings>("get_trovo_settings"),
+  setTrovoApp: (clientId: string, clientSecret: string) => invoke<void>("set_trovo_app", { clientId, clientSecret }),
+  trovoLoginStart: () => invoke<string>("trovo_login_start"),
   removeAccount: (id: string) => invoke<void>("remove_account", { id }),
 
   listChannels: () => invoke<Channel[]>("list_channels"),
@@ -26,9 +46,28 @@ export const api = {
   removeChannel: (channelId: string) => invoke<void>("remove_channel", { channelId }),
   sendMessage: (channelIds: string[], text: string) => invoke<void>("send_message", { channelIds, text }),
   moderate: (channelId: string, kind: ModerationKind) => invoke<void>("moderate", { channelId, kind }),
+  toggleDock: () => invoke<boolean>("toggle_dock"),
+  bansyncIdentities: () => invoke<IdentityLink[]>("bansync_list_identities"),
+  bansyncLink: (link: IdentityLink) => invoke<void>("bansync_link_identity", { link }),
+  bansyncUnlink: (platform: Platform, userId: string) => invoke<void>("bansync_unlink_identity", { platform, userId }),
+  bansyncPreview: (request: SyncRequest) => invoke<PreviewItem[]>("bansync_preview", { request }),
+  bansyncSubmit: (request: SyncRequest) => invoke<BanJob[]>("bansync_submit", { request }),
+  bansyncRetry: (jobId: string | null) => invoke<BanJob[]>("bansync_retry", { jobId }),
+  bansyncJournal: () => invoke<BanJob[]>("bansync_journal"),
+  listAutomodRules: () => invoke<AutomodRule[]>("list_automod_rules"),
+  saveAutomodRule: (rule: AutomodRule) => invoke<void>("save_automod_rule", { rule }),
+  deleteAutomodRule: (id: string) => invoke<void>("delete_automod_rule", { id }),
+  testAutomod: (text: string, platform: string) => invoke<AutomodVerdict>("test_automod", { text, platform }),
   streamInfos: () => invoke<StreamInfo[]>("stream_infos"),
 
   streamingState: () => invoke<StreamingState>("streaming_state"),
+
+  listSessions: () => invoke<SessionSummary[]>("list_sessions"),
+  sessionDetail: (id: string) => invoke<SessionDetail>("session_detail", { id }),
+  /** Écrit le CSV dans le dossier Téléchargements ; renvoie le chemin du fichier. */
+  saveSessionCsv: (id: string) => invoke<string>("save_session_csv", { id }),
+  deleteSession: (id: string) => invoke<void>("delete_session", { id }),
+
   listDestinations: () => invoke<StreamDestination[]>("list_destinations"),
   saveDestination: (destination: DestinationInput) => invoke<StreamDestination>("save_destination", { destination }),
   deleteDestination: (id: string) => invoke<void>("delete_destination", { id }),
@@ -38,4 +77,18 @@ export const api = {
   setFfmpegPath: (path: string) => invoke<FfmpegStatus>("set_ffmpeg_path", { path }),
   setStreamTitle: (title: string) => invoke<TitleResult[]>("set_stream_title", { title }),
   twitchCurrentTitle: () => invoke<string | null>("twitch_current_title"),
+
+  listRules: () => invoke<Rule[]>("list_rules"),
+  saveRule: (rule: Rule) => invoke<void>("save_rule", { rule }),
+  deleteRule: (id: string) => invoke<void>("delete_rule", { id }),
+  listChatCommands: () => invoke<ChatCommand[]>("list_chat_commands"),
+  saveChatCommand: (command: ChatCommand) => invoke<void>("save_chat_command", { command }),
+  deleteChatCommand: (id: string) => invoke<void>("delete_chat_command", { id }),
+  automationLog: () => invoke<AutomationLogEntry[]>("automation_log"),
+  updateStreamInfo: (channelIds: string[], update: StreamInfoUpdate) =>
+    invoke<PlatformUpdateResult[]>("update_stream_info", { channelIds, update }),
+  searchCategories: (query: string) => invoke<Category[]>("search_categories", { query }),
+  listPresets: () => invoke<StreamPreset[]>("list_presets"),
+  savePreset: (preset: StreamPreset) => invoke<void>("save_preset", { preset }),
+  deletePreset: (id: string) => invoke<void>("delete_preset", { id }),
 };

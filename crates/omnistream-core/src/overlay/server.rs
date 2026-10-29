@@ -68,14 +68,26 @@ impl Drop for RunningServer {
 pub async fn start(hub: OverlayHub, token: String, port: u16) -> Result<RunningServer> {
     let listener = tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
         .await
-        .map_err(|e| Error::Other(format!("impossible d'ouvrir le port {port} pour l'overlay: {e}")))?;
+        .map_err(|e| {
+            Error::Other(format!(
+                "impossible d'ouvrir le port {port} pour l'overlay: {e}"
+            ))
+        })?;
     let port = listener.local_addr()?.port();
     let (shutdown_tx, shutdown) = watch::channel(());
-    let app = router(ServerState { hub, token, shutdown });
+    let app = router(ServerState {
+        hub,
+        token,
+        shutdown,
+    });
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
-    Ok(RunningServer { port, task: Some(task), _shutdown: shutdown_tx })
+    Ok(RunningServer {
+        port,
+        task: Some(task),
+        _shutdown: shutdown_tx,
+    })
 }
 
 fn router(state: ServerState) -> Router {
@@ -109,10 +121,12 @@ async fn local_host_only(req: Request, next: Next) -> Response {
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
     // Une page web tierce ne doit pas pouvoir lire le chat : on refuse toute origine non locale.
-    let origin = req
-        .headers()
-        .get(header::ORIGIN)
-        .map(|o| o.to_str().unwrap_or("").split_once("://").map_or("", |(_, rest)| rest));
+    let origin = req.headers().get(header::ORIGIN).map(|o| {
+        o.to_str()
+            .unwrap_or("")
+            .split_once("://")
+            .map_or("", |(_, rest)| rest)
+    });
     if is_local_host(host) && origin.is_none_or(is_local_host) {
         next.run(req).await
     } else {
@@ -146,13 +160,21 @@ async fn chat_theme(State(s): State<ServerState>, Query(q): Query<TokenQuery>) -
     if !authorized(&s, &q) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    no_store(([(header::CONTENT_TYPE, "text/css; charset=utf-8")], s.hub.settings().css()).into_response())
+    no_store(
+        (
+            [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+            s.hub.settings().css(),
+        )
+            .into_response(),
+    )
 }
 
 fn valid_channel(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 32
-        && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
 }
 
 async fn ws_handler(
@@ -170,10 +192,19 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| serve_socket(socket, s.hub, channel, s.shutdown))
 }
 
-async fn serve_socket(mut socket: WebSocket, hub: OverlayHub, channel: String, mut shutdown: watch::Receiver<()>) {
+async fn serve_socket(
+    mut socket: WebSocket,
+    hub: OverlayHub,
+    channel: String,
+    mut shutdown: watch::Receiver<()>,
+) {
     // Abonnement avant l'état initial : aucun événement ne peut se perdre entre les deux.
     let mut rx = hub.subscribe(&channel);
-    if socket.send(Message::Text(hub.snapshot(&channel))).await.is_err() {
+    if socket
+        .send(Message::Text(hub.snapshot(&channel)))
+        .await
+        .is_err()
+    {
         return;
     }
     loop {
@@ -216,8 +247,16 @@ mod tests {
 
     #[test]
     fn local_hosts() {
-        assert!(is_local_host("127.0.0.1:17420") && is_local_host("localhost") && is_local_host("[::1]:80"));
-        assert!(!is_local_host("evil.example") && !is_local_host("127.0.0.1.evil.example") && !is_local_host(""));
+        assert!(
+            is_local_host("127.0.0.1:17420")
+                && is_local_host("localhost")
+                && is_local_host("[::1]:80")
+        );
+        assert!(
+            !is_local_host("evil.example")
+                && !is_local_host("127.0.0.1.evil.example")
+                && !is_local_host("")
+        );
     }
 
     #[test]

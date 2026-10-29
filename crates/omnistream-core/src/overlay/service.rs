@@ -36,7 +36,8 @@ pub struct OverlayService {
 
 fn new_token() -> Result<String> {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).map_err(|e| Error::Other(format!("génération du jeton impossible: {e}")))?;
+    getrandom::getrandom(&mut bytes)
+        .map_err(|e| Error::Other(format!("génération du jeton impossible: {e}")))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -48,7 +49,12 @@ impl OverlayService {
                 hub.set_settings(settings);
             }
         }
-        Self { db, hub, server: Mutex::new(None), last_error: std::sync::Mutex::new(None) }
+        Self {
+            db,
+            hub,
+            server: Mutex::new(None),
+            last_error: std::sync::Mutex::new(None),
+        }
     }
 
     /// Hub de diffusion (clonable) : c'est lui que les autres modules utilisent pour publier.
@@ -80,7 +86,8 @@ impl OverlayService {
         if guard.is_some() {
             return Ok(());
         }
-        let result = async { server::start(self.hub.clone(), self.token()?, self.port()).await }.await;
+        let result =
+            async { server::start(self.hub.clone(), self.token()?, self.port()).await }.await;
         match result {
             Ok(s) => {
                 *self.last_error.lock().unwrap() = None;

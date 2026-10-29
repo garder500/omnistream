@@ -35,7 +35,10 @@ pub fn overlay_get_settings(state: State<'_, AppState>) -> OverlaySettings {
 }
 
 #[tauri::command]
-pub fn overlay_set_settings(state: State<'_, AppState>, settings: OverlaySettings) -> CmdResult<OverlaySettings> {
+pub fn overlay_set_settings(
+    state: State<'_, AppState>,
+    settings: OverlaySettings,
+) -> CmdResult<OverlaySettings> {
     state.overlay.set_settings(settings).map_err(err)
 }
 
@@ -68,7 +71,11 @@ pub fn overlay_test_message(state: State<'_, AppState>) {
     state.overlay.hub().chat_message(OverlayMessage {
         id: format!("test-{now}"),
         platform: "twitch".into(),
-        author: OverlayAuthor { display_name: "Omnistream".into(), is_moderator: true, is_subscriber: false },
+        author: OverlayAuthor {
+            display_name: "Omnistream".into(),
+            is_moderator: true,
+            is_subscriber: false,
+        },
         text: "Ceci est un message de test pour votre overlay".into(),
         timestamp_ms: now,
         emotes: Vec::new(),
