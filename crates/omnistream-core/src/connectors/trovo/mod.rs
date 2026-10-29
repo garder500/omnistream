@@ -115,7 +115,9 @@ fn command_target(user: &str) -> Result<&str> {
 fn moderation_command(kind: &ModerationKind) -> Option<Result<String>> {
     Some(match kind {
         ModerationKind::DeleteMessage { .. } => return None,
-        ModerationKind::Timeout { user_id, seconds } => command_target(user_id).map(|u| format!("/timeout {u} {seconds}")),
+        ModerationKind::Timeout { user_id, seconds } => {
+            command_target(user_id).map(|u| format!("/timeout {u} {seconds}"))
+        }
         ModerationKind::Ban { user_id, .. } => command_target(user_id).map(|u| format!("/ban {u}")),
         ModerationKind::Unban { user_id } => command_target(user_id).map(|u| format!("/unban {u}")),
     })
@@ -143,18 +145,28 @@ fn value_text(v: &Value) -> Option<String> {
 
 impl Inner {
     async fn app(&self) -> Result<TrovoApp> {
-        self.config.lock().await.app.clone().ok_or(Error::NotAuthenticated("Trovo"))
+        self.config
+            .lock()
+            .await
+            .app
+            .clone()
+            .ok_or(Error::NotAuthenticated("Trovo"))
     }
 
     /// Compte valide (jeton renouvelé s'il expire dans moins d'une minute).
     async fn account(&self, force_refresh: bool) -> Result<(TrovoApp, TrovoAccount)> {
         let mut cfg = self.config.lock().await;
         let app = cfg.app.clone().ok_or(Error::NotAuthenticated("Trovo"))?;
-        let acc = cfg.account.as_mut().ok_or(Error::NotAuthenticated("Trovo"))?;
+        let acc = cfg
+            .account
+            .as_mut()
+            .ok_or(Error::NotAuthenticated("Trovo"))?;
         let expiring = acc.tokens.expires_at.is_some_and(|e| e - 60 < now_secs());
         if force_refresh || expiring {
             if let Some(refresh) = acc.tokens.refresh_token.clone() {
-                match auth::trovo::refresh(&self.http, &app.client_id, &app.client_secret, &refresh).await {
+                match auth::trovo::refresh(&self.http, &app.client_id, &app.client_secret, &refresh)
+                    .await
+                {
                     Ok(mut fresh) => {
                         // Trovo peut ne pas renvoyer de nouveau refresh token : on garde l'ancien.
                         fresh.refresh_token = fresh.refresh_token.or(Some(refresh));
@@ -164,7 +176,9 @@ impl Inner {
                         }
                     }
                     // Jeton encore valide : on tente quand même la requête.
-                    Err(_) if !force_refresh && !acc.tokens.expires_at.is_some_and(|e| e < now_secs()) => {}
+                    Err(_)
+                        if !force_refresh
+                            && !acc.tokens.expires_at.is_some_and(|e| e < now_secs()) => {}
                     Err(e) => return Err(e),
                 }
             }
@@ -172,15 +186,24 @@ impl Inner {
         Ok((app, acc.clone()))
     }
 
-    async fn call(&self, method: Method, path: &str, body: Option<Value>, as_user: bool) -> Result<Value> {
+    async fn call(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        as_user: bool,
+    ) -> Result<Value> {
         let mut attempt = 0;
         loop {
-            let mut req = self.http.request(method.clone(), format!("{API_URL}/{path}"));
+            let mut req = self
+                .http
+                .request(method.clone(), format!("{API_URL}/{path}"));
             if as_user {
                 let (app, acc) = self.account(attempt > 0).await?;
-                req = req
-                    .header("client-id", app.client_id)
-                    .header("Authorization", format!("OAuth {}", acc.tokens.access_token));
+                req = req.header("client-id", app.client_id).header(
+                    "Authorization",
+                    format!("OAuth {}", acc.tokens.access_token),
+                );
             } else {
                 req = req.header("client-id", self.app().await?.client_id);
             }
@@ -212,7 +235,14 @@ impl Inner {
         if let Some(id) = self.channel_ids.lock().unwrap().get(&login) {
             return Ok(id.clone());
         }
-        let v = self.call(Method::POST, "channels/id", Some(json!({ "username": login })), false).await?;
+        let v = self
+            .call(
+                Method::POST,
+                "channels/id",
+                Some(json!({ "username": login })),
+                false,
+            )
+            .await?;
         let id = value_text(&v["channel_id"])
             .or_else(|| value_text(&v["channelId"]))
             .ok_or_else(|| Error::Other(format!("chaîne Trovo introuvable: {login}")))?;
@@ -221,14 +251,27 @@ impl Inner {
     }
 
     async fn chat_token(&self, channel_id: &str) -> Result<String> {
-        let v = self.call(Method::GET, &format!("chat/channel-token/{channel_id}"), None, false).await?;
-        value_text(&v["token"]).ok_or_else(|| Error::Other("Trovo n'a pas fourni de jeton de chat".into()))
+        let v = self
+            .call(
+                Method::GET,
+                &format!("chat/channel-token/{channel_id}"),
+                None,
+                false,
+            )
+            .await?;
+        value_text(&v["token"])
+            .ok_or_else(|| Error::Other("Trovo n'a pas fourni de jeton de chat".into()))
     }
 
     async fn say(&self, channel_id: &str, content: &str) -> Result<()> {
-        self.call(Method::POST, "chat/send", Some(json!({ "content": content, "channel_id": channel_id })), true)
-            .await
-            .map(|_| ())
+        self.call(
+            Method::POST,
+            "chat/send",
+            Some(json!({ "content": content, "channel_id": channel_id })),
+            true,
+        )
+        .await
+        .map(|_| ())
     }
 
     fn remember_sender(&self, message_id: String, sender_id: String) {
@@ -249,7 +292,11 @@ impl ChatConnector for TrovoConnector {
     async fn connect(&self, channel: &Channel, tx: mpsc::Sender<ChatEvent>) -> Result<()> {
         self.disconnect(channel).await?;
         let task = tokio::spawn(run_channel(self.inner.clone(), channel.clone(), tx));
-        self.inner.channels.lock().unwrap().insert(channel.id.clone(), ChannelHandle { task });
+        self.inner
+            .channels
+            .lock()
+            .unwrap()
+            .insert(channel.id.clone(), ChannelHandle { task });
         Ok(())
     }
 
@@ -272,7 +319,12 @@ impl ChatConnector for TrovoConnector {
         }
         let v = self
             .inner
-            .call(Method::POST, "channels/id", Some(json!({ "username": channel.external_id.to_lowercase() })), false)
+            .call(
+                Method::POST,
+                "channels/id",
+                Some(json!({ "username": channel.external_id.to_lowercase() })),
+                false,
+            )
             .await?;
         Ok(parse_stream_info(&v, &channel.id))
     }
@@ -287,7 +339,9 @@ impl ChatConnector for TrovoConnector {
                 .unwrap()
                 .get(message_id)
                 .cloned()
-                .ok_or_else(|| Error::Other("auteur du message Trovo inconnu (message trop ancien)".into()))?;
+                .ok_or_else(|| {
+                    Error::Other("auteur du message Trovo inconnu (message trop ancien)".into())
+                })?;
             let path = format!("channels/{channel_id}/messages/{message_id}/users/{uid}");
             inner.call(Method::DELETE, &path, None, true).await?;
             return Ok(());
@@ -306,7 +360,13 @@ async fn run_channel(inner: Arc<Inner>, channel: Channel, tx: mpsc::Sender<ChatE
         if let Err(e) = session(&inner, &channel, &tx).await {
             eprintln!("chat Trovo {}: {e}", channel.display_name);
         }
-        if tx.send(ChatEvent::Disconnected { channel_id: channel.id.clone() }).await.is_err() {
+        if tx
+            .send(ChatEvent::Disconnected {
+                channel_id: channel.id.clone(),
+            })
+            .await
+            .is_err()
+        {
             return;
         }
         if started.elapsed() > Duration::from_secs(30) {
@@ -321,9 +381,13 @@ async fn session(inner: &Inner, channel: &Channel, tx: &mpsc::Sender<ChatEvent>)
     let net = |e: tokio_tungstenite::tungstenite::Error| Error::Network(e.to_string());
     let channel_id = inner.channel_id(&channel.external_id).await?;
     let token = inner.chat_token(&channel_id).await?;
-    let (mut ws, _) = tokio_tungstenite::connect_async(CHAT_URL).await.map_err(net)?;
+    let (mut ws, _) = tokio_tungstenite::connect_async(CHAT_URL)
+        .await
+        .map_err(net)?;
     let auth = json!({"type": "AUTH", "nonce": "auth", "data": {"token": token}});
-    ws.send(Message::Text(auth.to_string())).await.map_err(net)?;
+    ws.send(Message::Text(auth.to_string()))
+        .await
+        .map_err(net)?;
 
     let mut gap = Duration::from_secs(30);
     let mut ping = tokio::time::interval(gap);
@@ -381,15 +445,39 @@ mod tests {
     #[test]
     fn builds_moderation_commands() {
         let cmd = |k: ModerationKind| moderation_command(&k).unwrap().unwrap();
-        assert_eq!(cmd(ModerationKind::Ban { user_id: "@Fan_42".into(), reason: None }), "/ban Fan_42");
-        assert_eq!(cmd(ModerationKind::Timeout { user_id: "fan".into(), seconds: 600 }), "/timeout fan 600");
-        assert_eq!(cmd(ModerationKind::Unban { user_id: "fan".into() }), "/unban fan");
-        assert!(moderation_command(&ModerationKind::DeleteMessage { message_id: "m".into() }).is_none());
+        assert_eq!(
+            cmd(ModerationKind::Ban {
+                user_id: "@Fan_42".into(),
+                reason: None
+            }),
+            "/ban Fan_42"
+        );
+        assert_eq!(
+            cmd(ModerationKind::Timeout {
+                user_id: "fan".into(),
+                seconds: 600
+            }),
+            "/timeout fan 600"
+        );
+        assert_eq!(
+            cmd(ModerationKind::Unban {
+                user_id: "fan".into()
+            }),
+            "/unban fan"
+        );
+        assert!(moderation_command(&ModerationKind::DeleteMessage {
+            message_id: "m".into()
+        })
+        .is_none());
     }
 
     #[test]
     fn rejects_injection_in_commands() {
-        let r = moderation_command(&ModerationKind::Ban { user_id: "fan\n/mod x".into(), reason: None }).unwrap();
+        let r = moderation_command(&ModerationKind::Ban {
+            user_id: "fan\n/mod x".into(),
+            reason: None,
+        })
+        .unwrap();
         assert!(r.is_err());
         assert!(command_target("").is_err());
     }

@@ -87,15 +87,65 @@ pub struct ChatMessage {
     pub text: String,
     /// Millisecondes depuis l'epoch Unix.
     pub timestamp_ms: i64,
+    /// Émotes repérées dans `text` (natives de la plateforme puis 7TV/BTTV/FFZ).
+    #[serde(default)]
+    pub emotes: Vec<crate::emotes::EmoteSpan>,
+    #[serde(default)]
+    pub badges: Vec<crate::emotes::ChatBadge>,
+    /// Identifiant de salon Twitch (sert à charger les émotes tierces); jamais envoyé à l'interface.
+    #[serde(default, skip_serializing)]
+    pub room_id: Option<String>,
 }
 
 /// Événement de live (abonnement, don de subs, raid...).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEventKind {
-    Sub { months: u32 },
-    Gift { recipient: Option<String> },
-    Raid { viewers: u32 },
+    /// Nouveau follow (nécessite une source d'événements dédiée côté plateforme).
+    Follow,
+    Sub {
+        months: u32,
+    },
+    Gift {
+        recipient: Option<String>,
+    },
+    Raid {
+        viewers: u32,
+    },
+    /// Don d'argent, en centimes de `currency` (code ISO 4217) pour éviter les flottants.
+    Donation {
+        amount_cents: u64,
+        currency: String,
+    },
+    /// Bits Twitch (cheer).
+    Bits {
+        amount: u32,
+    },
+}
+
+impl StreamEventKind {
+    /// Nom stable (celui du tag serde), utilisé pour les filtres, la base et l'export.
+    pub fn name(&self) -> &'static str {
+        match self {
+            StreamEventKind::Follow => "follow",
+            StreamEventKind::Sub { .. } => "sub",
+            StreamEventKind::Gift { .. } => "gift",
+            StreamEventKind::Raid { .. } => "raid",
+            StreamEventKind::Donation { .. } => "donation",
+            StreamEventKind::Bits { .. } => "bits",
+        }
+    }
+
+    /// Quantité principale de l'événement (mois, spectateurs, bits, centimes), 0 si sans objet.
+    pub fn amount(&self) -> u64 {
+        match self {
+            StreamEventKind::Follow | StreamEventKind::Gift { .. } => 0,
+            StreamEventKind::Sub { months } => u64::from(*months),
+            StreamEventKind::Raid { viewers } => u64::from(*viewers),
+            StreamEventKind::Donation { amount_cents, .. } => *amount_cents,
+            StreamEventKind::Bits { amount } => u64::from(*amount),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,13 +170,65 @@ pub struct StreamInfo {
     pub started_at: String,
 }
 
+/// Catégorie (jeu) proposée par la recherche d'une plateforme.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
+}
+
+/// Mise à jour des infos de live ; un champ `None` n'est pas modifié.
+/// La catégorie est donnée par son nom : chaque connecteur la résout à sa manière.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamInfoUpdate {
+    pub title: Option<String>,
+    pub category: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+impl StreamInfoUpdate {
+    pub fn is_empty(&self) -> bool {
+        let blank = |v: &Option<String>| v.as_deref().is_none_or(|s| s.trim().is_empty());
+        blank(&self.title) && blank(&self.category) && self.tags.is_none()
+    }
+}
+
+/// Résultat de la mise à jour pour une chaîne (le succès est partiel par plateforme).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlatformUpdateResult {
+    pub channel_id: String,
+    pub platform: Platform,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+/// Préréglage de titre / catégorie / tags, réutilisable en un clic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamPreset {
+    pub id: String,
+    pub name: String,
+    pub title: String,
+    pub category: String,
+    pub tags: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModerationKind {
-    DeleteMessage { message_id: String },
-    Timeout { user_id: String, seconds: u32 },
-    Ban { user_id: String, reason: Option<String> },
-    Unban { user_id: String },
+    DeleteMessage {
+        message_id: String,
+    },
+    Timeout {
+        user_id: String,
+        seconds: u32,
+    },
+    Ban {
+        user_id: String,
+        reason: Option<String>,
+    },
+    Unban {
+        user_id: String,
+    },
 }
 
 impl ModerationKind {
@@ -162,6 +264,10 @@ pub struct StreamDestination {
 
 impl StreamDestination {
     pub fn full_url(&self) -> String {
-        format!("{}/{}", self.rtmp_url.trim_end_matches('/'), self.stream_key)
+        format!(
+            "{}/{}",
+            self.rtmp_url.trim_end_matches('/'),
+            self.stream_key
+        )
     }
 }

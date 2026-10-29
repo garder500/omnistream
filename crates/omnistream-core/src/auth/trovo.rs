@@ -45,7 +45,9 @@ struct TokenResponse {
 fn encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()
@@ -58,7 +60,10 @@ fn decode(s: &str) -> String {
     while i < bytes.len() {
         match bytes[i] {
             b'%' if i + 2 < bytes.len() => {
-                if let Some(b) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                if let Some(b) = s
+                    .get(i + 1..i + 3)
+                    .and_then(|h| u8::from_str_radix(h, 16).ok())
+                {
                     out.push(b);
                     i += 3;
                     continue;
@@ -103,7 +108,9 @@ pub(crate) fn parse_callback(request_line: &str, expected_state: &str) -> Result
         return Err(Error::Other(format!("autorisation Trovo refusée: {e}")));
     }
     if param("state").as_deref() != Some(expected_state) {
-        return Err(Error::Other("réponse Trovo non reconnue (state invalide)".into()));
+        return Err(Error::Other(
+            "réponse Trovo non reconnue (state invalide)".into(),
+        ));
     }
     param("code")
         .filter(|c| !c.is_empty())
@@ -114,7 +121,11 @@ pub(crate) fn parse_callback(request_line: &str, expected_state: &str) -> Result
 pub async fn wait_for_code(expected_state: &str, timeout: Duration) -> Result<String> {
     let listener = TcpListener::bind(("127.0.0.1", CALLBACK_PORT))
         .await
-        .map_err(|e| Error::Other(format!("port {CALLBACK_PORT} indisponible pour la connexion Trovo: {e}")))?;
+        .map_err(|e| {
+            Error::Other(format!(
+                "port {CALLBACK_PORT} indisponible pour la connexion Trovo: {e}"
+            ))
+        })?;
     let wait = async {
         loop {
             let (mut sock, _) = listener.accept().await?;
@@ -133,8 +144,14 @@ pub async fn wait_for_code(expected_state: &str, timeout: Duration) -> Result<St
             }
             let result = parse_callback(line, expected_state);
             let (status, body) = match &result {
-                Ok(_) => ("200 OK", "Omnistream est connecté à Trovo. Vous pouvez fermer cet onglet."),
-                Err(_) => ("400 Bad Request", "Connexion Trovo impossible. Retournez dans Omnistream."),
+                Ok(_) => (
+                    "200 OK",
+                    "Omnistream est connecté à Trovo. Vous pouvez fermer cet onglet.",
+                ),
+                Err(_) => (
+                    "400 Bad Request",
+                    "Connexion Trovo impossible. Retournez dans Omnistream.",
+                ),
             };
             let page = format!(
                 "<!doctype html><meta charset=utf-8><title>Omnistream</title><body style=\"font-family:sans-serif;background:#120826;color:#fff;text-align:center;padding-top:20vh\">{body}"
@@ -154,17 +171,25 @@ pub async fn wait_for_code(expected_state: &str, timeout: Duration) -> Result<St
     match tokio::time::timeout(timeout, wait).await {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => Err(Error::Io(e)),
-        Err(_) => Err(Error::Other("délai dépassé: autorisation Trovo non reçue".into())),
+        Err(_) => Err(Error::Other(
+            "délai dépassé: autorisation Trovo non reçue".into(),
+        )),
     }
 }
 
 fn parse_tokens(status: u16, body: &str) -> Result<TokenSet> {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
     if status != 200 || v.get("access_token").is_none() {
-        let msg = v["message"].as_str().or(v["error"].as_str()).unwrap_or(body);
-        return Err(Error::Other(format!("Trovo a refusé la demande de jeton ({status}): {msg}")));
+        let msg = v["message"]
+            .as_str()
+            .or(v["error"].as_str())
+            .unwrap_or(body);
+        return Err(Error::Other(format!(
+            "Trovo a refusé la demande de jeton ({status}): {msg}"
+        )));
     }
-    let t: TokenResponse = serde_json::from_value(v).map_err(|e| Error::Other(format!("réponse Trovo invalide: {e}")))?;
+    let t: TokenResponse = serde_json::from_value(v)
+        .map_err(|e| Error::Other(format!("réponse Trovo invalide: {e}")))?;
     Ok(TokenSet {
         access_token: t.access_token,
         refresh_token: t.refresh_token,
@@ -172,7 +197,12 @@ fn parse_tokens(status: u16, body: &str) -> Result<TokenSet> {
     })
 }
 
-async fn token_request(http: &reqwest::Client, client_id: &str, path: &str, body: serde_json::Value) -> Result<TokenSet> {
+async fn token_request(
+    http: &reqwest::Client,
+    client_id: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> Result<TokenSet> {
     let resp = http
         .post(format!("{API_URL}/{path}"))
         .header("client-id", client_id)
@@ -184,7 +214,12 @@ async fn token_request(http: &reqwest::Client, client_id: &str, path: &str, body
     parse_tokens(status, &text)
 }
 
-pub async fn exchange_code(http: &reqwest::Client, client_id: &str, client_secret: &str, code: &str) -> Result<TokenSet> {
+pub async fn exchange_code(
+    http: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+) -> Result<TokenSet> {
     token_request(
         http,
         client_id,
@@ -199,7 +234,12 @@ pub async fn exchange_code(http: &reqwest::Client, client_id: &str, client_secre
     .await
 }
 
-pub async fn refresh(http: &reqwest::Client, client_id: &str, client_secret: &str, refresh_token: &str) -> Result<TokenSet> {
+pub async fn refresh(
+    http: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> Result<TokenSet> {
     token_request(
         http,
         client_id,
@@ -229,7 +269,11 @@ pub(crate) fn parse_user(v: &serde_json::Value) -> Result<TrovoUser> {
     })
 }
 
-pub async fn fetch_user(http: &reqwest::Client, client_id: &str, access_token: &str) -> Result<TrovoUser> {
+pub async fn fetch_user(
+    http: &reqwest::Client,
+    client_id: &str,
+    access_token: &str,
+) -> Result<TrovoUser> {
     let resp = http
         .get(format!("{API_URL}/getuserinfo"))
         .header("client-id", client_id)
@@ -247,7 +291,9 @@ mod tests {
     #[test]
     fn builds_authorize_url() {
         let url = authorize_url("abc", "s 1");
-        assert!(url.starts_with("https://open.trovo.live/page/login.html?client_id=abc&response_type=code"));
+        assert!(url.starts_with(
+            "https://open.trovo.live/page/login.html?client_id=abc&response_type=code"
+        ));
         assert!(url.contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A41257%2Fcallback"));
         assert!(url.contains("state=s%201"));
         assert!(url.contains("scope=chat_connect+chat_send_self"));
@@ -255,16 +301,27 @@ mod tests {
 
     #[test]
     fn parses_callback() {
-        assert_eq!(parse_callback("GET /callback?code=a%2Fb&state=xyz HTTP/1.1", "xyz").unwrap(), "a/b");
+        assert_eq!(
+            parse_callback("GET /callback?code=a%2Fb&state=xyz HTTP/1.1", "xyz").unwrap(),
+            "a/b"
+        );
         assert!(parse_callback("GET /callback?code=a&state=bad HTTP/1.1", "xyz").is_err());
-        assert!(parse_callback("GET /callback?error=access_denied&state=xyz HTTP/1.1", "xyz").is_err());
+        assert!(parse_callback(
+            "GET /callback?error=access_denied&state=xyz HTTP/1.1",
+            "xyz"
+        )
+        .is_err());
         assert!(parse_callback("GET /favicon.ico HTTP/1.1", "xyz").is_err());
         assert!(parse_callback("GET /callback?state=xyz HTTP/1.1", "xyz").is_err());
     }
 
     #[test]
     fn parses_token_responses() {
-        let t = parse_tokens(200, r#"{"access_token":"a","refresh_token":"r","expires_in":3600,"scope":"x"}"#).unwrap();
+        let t = parse_tokens(
+            200,
+            r#"{"access_token":"a","refresh_token":"r","expires_in":3600,"scope":"x"}"#,
+        )
+        .unwrap();
         assert_eq!(t.access_token, "a");
         assert_eq!(t.refresh_token.as_deref(), Some("r"));
         assert!(t.expires_at.unwrap() > now_secs());
@@ -274,7 +331,10 @@ mod tests {
     #[test]
     fn parses_user() {
         let u = parse_user(&serde_json::json!({"userId":"123","userName":"Garder","nickName":"Garder500","channelId":"456"})).unwrap();
-        assert_eq!((u.user_id.as_str(), u.login.as_str(), u.channel_id.as_str()), ("123", "garder", "456"));
+        assert_eq!(
+            (u.user_id.as_str(), u.login.as_str(), u.channel_id.as_str()),
+            ("123", "garder", "456")
+        );
         assert_eq!(u.display_name, "Garder500");
         assert!(parse_user(&serde_json::json!({})).is_err());
     }

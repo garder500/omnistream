@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use omnistream_core::automod::AutoMod;
 use omnistream_core::connectors::{ChatEvent, ConnectorRegistry, TrovoConnector, TwitchConnector};
 use omnistream_core::db::Database;
 use omnistream_core::moderation::ModerationEngine;
@@ -14,6 +15,7 @@ pub struct AppState {
     pub trovo: TrovoConnector,
     pub connectors: ConnectorRegistry,
     pub moderation: ModerationEngine,
+    pub automod: std::sync::Mutex<AutoMod>,
     pub streams: StreamService,
     pub chat_tx: mpsc::Sender<ChatEvent>,
 }
@@ -43,8 +45,14 @@ impl AppState {
         connectors.register(Arc::new(trovo.clone()));
         let (chat_tx, chat_rx) = mpsc::channel(1024);
         let streams = StreamService::new(db.clone(), Arc::new(KeyringStore));
+        let automod =
+            std::sync::Mutex::new(AutoMod::new(db.list_automod_rules().unwrap_or_else(|e| {
+                eprintln!("automod: règles illisibles, automod désactivé: {e}");
+                Vec::new()
+            })));
         let state = Self {
             db,
+            automod,
             twitch,
             trovo,
             moderation: ModerationEngine::new(connectors.clone()),
